@@ -197,10 +197,10 @@ class Command(BaseCommand):
                     newly_added = set(self.pks) - active_pks
 
                     if new_qs.count() > len(self.pks) or newly_added:
-                        print('New active scheduled tasks have been added to the queryset')
+                        logger.info('New active scheduled tasks have been added to the queryset')
                         new_tasks = new_qs.exclude(pk__in=self.pks) or [ScheduledTask()]
                         for new_task in new_tasks:
-                            print('adding new task %s' % new_task)
+                            logger.info('adding new task %s' % new_task)
                             if self.scheduler:
                                 self.scheduler.add_task(new_task)
 
@@ -210,7 +210,7 @@ class Command(BaseCommand):
                         self.pks = [t.pk for t in new_qs]
 
                 if options['testmode']:
-                    print('TESTMODE:', options['testmode'])
+                    logger.info('TESTMODE:', options['testmode'])
                     raise SystemExit()
 
         except Exception as err:
