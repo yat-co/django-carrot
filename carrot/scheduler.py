@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 
 from datetime import datetime
 import logging
@@ -52,7 +53,7 @@ class ScheduledTaskThread(threading.Thread):
         self.logger.info(f'Thread for scheduled task: {self.id} added')
         if self.scheduled_task.scheduled_time:
             while True:
-                while datetime.now() < self.scheduled_task.next_run_time:
+                while timezone.now() < self.scheduled_task.next_run_time:
                     if not self.active:
                         if self.inactive_reason:
                             self.logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
