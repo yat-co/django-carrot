@@ -49,11 +49,11 @@ class ScheduledTaskThread(threading.Thread):
         if self.run_now:
             self.scheduled_task.publish()
 
-        self.logger.info(f'Thread for scheduled task: {self.id} added, {self.scheduled_task.scheduled_time}')
+        print(f'Thread for scheduled task: {self.id} added, {self.scheduled_task.scheduled_time}')
         if self.scheduled_task.scheduled_time:
+            next_run_time = self.scheduled_task.next_run_time
             while True:
-                while self.scheduled_task.next_run_time < timezone.now():
-                    print(f'Executing scheduled task: {self.id} at {self.scheduled_task.next_run_time}')
+                while next_run_time > timezone.now():
                     if not self.active:
                         if self.inactive_reason:
                             self.logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
@@ -63,6 +63,7 @@ class ScheduledTaskThread(threading.Thread):
 
                     try:
                         self.scheduled_task = ScheduledTask.objects.get(pk=self.scheduled_task.pk, **self.filters)
+                        next_run_time = self.scheduled_task.next_run_time
 
                     except ObjectDoesNotExist:
                         self.logger.warning('Current task has been removed from the queryset. Stopping the thread')
@@ -70,21 +71,32 @@ class ScheduledTaskThread(threading.Thread):
 
                     ## TODO: Configurable Sleep Period
                     time.sleep(SLEEP)
-                    self.logger.info('Publishing message %s' % self.scheduled_task.task)
 
-                    # Update Model to Next Time Period
-                    self.scheduled_task.last_run_time = self.scheduled_task.next_run_time
-                    self.scheduled_task.save()
+                # Reset Next Run Time
+                self.logger.info('Publishing message %s' % self.scheduled_task.task)
+
+                # Update Model to Next Time Period
+                self.scheduled_task.last_run_time = next_run_time
+                self.scheduled_task.save()
+                next_run_time = self.scheduled_task.next_run_time
+               
+                # Publish if scheduled next run time is in the future to allow for scheduling to catch up for backdated 
+                # last_run_times
+                if next_run_time > timezone.now():
+                    # Publish
                     self.scheduled_task.publish()
+
         else:
             interval = self.scheduled_task.multiplier * self.scheduled_task.interval_count
             count = 0
+
+            print(f'Thread for scheduled task: {self.id} added, interval {interval}')
 
             while True:
                 while count < interval:
                     if not self.active:
                         if self.inactive_reason:
-                            self.logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
+                            print('Thread stop has been requested because of the following reason: %s.\n Stopping the '
                                 'thread' % self.inactive_reason)
 
                         return
