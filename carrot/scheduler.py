@@ -27,7 +27,7 @@ class ScheduledTaskThread(threading.Thread):
     def __init__(self,
                  scheduled_task: ScheduledTask,
                  run_now: bool = False,
-                 logger: logging.Log = None,
+                 logger: object = None,
                  **filters) -> None:
         threading.Thread.__init__(self)
         self.id = scheduled_task.pk
