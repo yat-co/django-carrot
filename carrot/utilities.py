@@ -5,6 +5,7 @@ consume
 Most users should use the functions defined in this module, rather than attempting to subclass the base level objects
 
 """
+from datetime import datetime
 import json
 import importlib
 from django.conf import settings
@@ -146,6 +147,7 @@ def publish_message(task: Union[str, Callable],
 
 def create_scheduled_task(task: Union[str, Callable],
                           interval: Dict[str, int],
+                          last_run_time: datetime = None,
                           task_name: str = None,
                           queue: str = None,
                           **kwargs) -> ScheduledTask:
@@ -175,6 +177,7 @@ def create_scheduled_task(task: Union[str, Callable],
                 task_name=task_name,
                 interval_type=interval_type,
                 interval_count=count,
+                last_run_time=last_run_time,
                 routing_key=queue,
                 task=task,
                 content=json.dumps(kwargs or '{}'),
