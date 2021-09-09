@@ -2,11 +2,14 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 
 from datetime import datetime
+import logging
 import threading
 import time
 from typing import List
 
 from carrot.models import ScheduledTask
+
+logger = logging.getLogger('carrot')
 
 SLEEP = settings.CARROT.get('sleep', 1)
 
@@ -44,12 +47,13 @@ class ScheduledTaskThread(threading.Thread):
         if self.run_now:
             self.scheduled_task.publish()
 
+        logger.info(f'Thread for scheduled task: {self.id} added')
         if self.scheduled_task.scheduled_time:
             while True:
                 while datetime.now() < self.scheduled_task.next_run_time:
                     if not self.active:
                         if self.inactive_reason:
-                            print('Thread stop has been requested because of the following reason: %s.\n Stopping the '
+                            logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
                                 'thread' % self.inactive_reason)
 
                         return
@@ -58,12 +62,12 @@ class ScheduledTaskThread(threading.Thread):
                         self.scheduled_task = ScheduledTask.objects.get(pk=self.scheduled_task.pk, **self.filters)
 
                     except ObjectDoesNotExist:
-                        print('Current task has been removed from the queryset. Stopping the thread')
+                        logger.warning('Current task has been removed from the queryset. Stopping the thread')
                         return
 
                     ## TODO: Configurable Sleep Period
                     time.sleep(SLEEP)
-                    print('Publishing message %s' % self.scheduled_task.task)
+                    logger.info('Publishing message %s' % self.scheduled_task.task)
                     self.scheduled_task.publish()
                     
                     # Update Model to Next Time Period
@@ -77,7 +81,7 @@ class ScheduledTaskThread(threading.Thread):
                 while count < interval:
                     if not self.active:
                         if self.inactive_reason:
-                            print('Thread stop has been requested because of the following reason: %s.\n Stopping the '
+                            logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
                                 'thread' % self.inactive_reason)
 
                         return
@@ -87,13 +91,13 @@ class ScheduledTaskThread(threading.Thread):
                         interval = self.scheduled_task.multiplier * self.scheduled_task.interval_count
 
                     except ObjectDoesNotExist:
-                        print('Current task has been removed from the queryset. Stopping the thread')
+                        logger.warning('Current task has been removed from the queryset. Stopping the thread')
                         return
 
                     time.sleep(SLEEP)
                     count += SLEEP
 
-                print('Publishing message %s' % self.scheduled_task.task)
+                logger.info('Publishing message %s' % self.scheduled_task.task)
                 self.scheduled_task.publish()
                 count = 0
 
