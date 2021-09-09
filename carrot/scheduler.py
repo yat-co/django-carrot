@@ -27,12 +27,14 @@ class ScheduledTaskThread(threading.Thread):
     def __init__(self,
                  scheduled_task: ScheduledTask,
                  run_now: bool = False,
+                 logger: logging.Log = None,
                  **filters) -> None:
         threading.Thread.__init__(self)
         self.id = scheduled_task.pk
         self.queue = scheduled_task.routing_key
         self.scheduled_task = scheduled_task
         self.run_now = run_now
+        self.logger = logger
         self.active = True
         self.filters = filters
         self.inactive_reason = ''
@@ -47,13 +49,13 @@ class ScheduledTaskThread(threading.Thread):
         if self.run_now:
             self.scheduled_task.publish()
 
-        logger.info(f'Thread for scheduled task: {self.id} added')
+        self.logger.info(f'Thread for scheduled task: {self.id} added')
         if self.scheduled_task.scheduled_time:
             while True:
                 while datetime.now() < self.scheduled_task.next_run_time:
                     if not self.active:
                         if self.inactive_reason:
-                            logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
+                            self.logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
                                 'thread' % self.inactive_reason)
 
                         return
@@ -62,12 +64,12 @@ class ScheduledTaskThread(threading.Thread):
                         self.scheduled_task = ScheduledTask.objects.get(pk=self.scheduled_task.pk, **self.filters)
 
                     except ObjectDoesNotExist:
-                        logger.warning('Current task has been removed from the queryset. Stopping the thread')
+                        self.logger.warning('Current task has been removed from the queryset. Stopping the thread')
                         return
 
                     ## TODO: Configurable Sleep Period
                     time.sleep(SLEEP)
-                    logger.info('Publishing message %s' % self.scheduled_task.task)
+                    self.logger.info('Publishing message %s' % self.scheduled_task.task)
                     self.scheduled_task.publish()
                     
                     # Update Model to Next Time Period
@@ -81,7 +83,7 @@ class ScheduledTaskThread(threading.Thread):
                 while count < interval:
                     if not self.active:
                         if self.inactive_reason:
-                            logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
+                            self.logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
                                 'thread' % self.inactive_reason)
 
                         return
@@ -91,13 +93,13 @@ class ScheduledTaskThread(threading.Thread):
                         interval = self.scheduled_task.multiplier * self.scheduled_task.interval_count
 
                     except ObjectDoesNotExist:
-                        logger.warning('Current task has been removed from the queryset. Stopping the thread')
+                        self.logger.warning('Current task has been removed from the queryset. Stopping the thread')
                         return
 
                     time.sleep(SLEEP)
                     count += SLEEP
 
-                logger.info('Publishing message %s' % self.scheduled_task.task)
+                self.logger.info('Publishing message %s' % self.scheduled_task.task)
                 self.scheduled_task.publish()
                 count = 0
 
@@ -116,16 +118,17 @@ class ScheduledTaskManager(object):
         self.threads: List[ScheduledTaskThread] = []
         self.filters = options.pop('filters', {'active': True})
         self.run_now = options.pop('run_now', False)
+        self.logger = options.pop('logger', None)
         self.tasks = ScheduledTask.objects.filter(**self.filters)
 
     def start(self) -> None:
         """
         Initiates and starts a scheduler for each given ScheduledTask
         """
-        logger.info('found %i scheduled tasks to run' % self.tasks.count())
+        self.logger.info('found %i scheduled tasks to run' % self.tasks.count())
         for t in self.tasks:
-            logger.info('starting thread for task %s' % t.task)
-            thread = ScheduledTaskThread(t, self.run_now, **self.filters)
+            self.logger.info('starting thread for task %s' % t.task)
+            thread = ScheduledTaskThread(t, self.run_now, self.logger, **self.filters)
             thread.start()
             self.threads.append(thread)
 
@@ -134,7 +137,7 @@ class ScheduledTaskManager(object):
         After the manager has been started, this function can be used to add an additional ScheduledTask starts a
         scheduler for it
         """
-        thread = ScheduledTaskThread(task, self.run_now, **self.filters)
+        thread = ScheduledTaskThread(task, self.run_now, self.logger, **self.filters)
         thread.start()
         self.threads.append(thread)
 
@@ -142,11 +145,11 @@ class ScheduledTaskManager(object):
         """
         Safely stop the manager
         """
-        logger.warning('Attempting to stop %i running threads' % len(self.threads))
+        self.logger.warning('Attempting to stop %i running threads' % len(self.threads))
 
         for t in self.threads:
-            logger.warning('Stopping thread %s' % t)
+            self.logger.warning('Stopping thread %s' % t)
             t.active = False
             t.inactive_reason = 'A termination of service was requested'
             t.join()
-            logger.warning('thread %s stopped' % t)
+            self.logger.warning('thread %s stopped' % t)
