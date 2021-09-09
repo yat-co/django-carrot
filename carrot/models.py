@@ -9,6 +9,7 @@ except ImportError:
 
 from carrot.exceptions import CarrotConfigException
 
+from datetime import datetime, timedelta
 import json
 import os
 import sys
@@ -127,6 +128,8 @@ class ScheduledTask(models.Model):
     interval_type = models.CharField(max_length=200, choices=INTERVAL_CHOICES, default='seconds')
     interval_count = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
 
+    last_run_time = models.DateTimeField(blank=True, null=True)
+
     exchange = models.CharField(max_length=200, blank=True, null=True)
     routing_key = models.CharField(max_length=200, blank=True, null=True)
     queue = models.CharField(max_length=200, blank=True, null=True)
@@ -165,6 +168,16 @@ class ScheduledTask(models.Model):
             return tuple([a.strip() for a in self.task_args.split(',') if a])
         else:
             return ()
+
+    @property
+    def scheduled_time(self) -> bool:
+        return self.last_run_time is not None
+
+    @property
+    def next_run_time(self) -> datetime:
+        if not self.scheduled_time:
+            return None
+        return self.last_run_time + timedelta(seconds=self.interval_count * self.multiplier)
 
     def publish(self, priority: int = 0) -> MessageLog:
         from carrot.utilities import publish_message

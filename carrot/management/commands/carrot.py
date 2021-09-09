@@ -130,14 +130,10 @@ class Command(BaseCommand):
                 'host': DEFAULT_BROKER
             }]
 
-        if run_scheduler:
-            self.scheduler = ScheduledTaskManager()
+
 
         try:
-            # scheduler
-            if self.scheduler:
-                self.scheduler.start()
-                self.stdout.write(self.style.SUCCESS('Successfully started scheduler'))
+
 
             # logger
             loglevel = getattr(logging, options.get('loglevel', 'DEBUG'))
@@ -157,6 +153,14 @@ class Command(BaseCommand):
 
             logger.addHandler(file_handler)
             logger.addHandler(stream_handler)
+
+            if run_scheduler:
+                self.scheduler = ScheduledTaskManager(logger=logger)
+                
+            # scheduler
+            if self.scheduler:
+                self.scheduler.start()
+                self.stdout.write(self.style.SUCCESS('Successfully started scheduler'))
 
             # consumers
             for queue in queues:
@@ -197,10 +201,10 @@ class Command(BaseCommand):
                     newly_added = set(self.pks) - active_pks
 
                     if new_qs.count() > len(self.pks) or newly_added:
-                        print('New active scheduled tasks have been added to the queryset')
+                        self.stdout.write(self.style.SUCCESS('New active scheduled tasks have been added to the queryset'))
                         new_tasks = new_qs.exclude(pk__in=self.pks) or [ScheduledTask()]
                         for new_task in new_tasks:
-                            print('adding new task %s' % new_task)
+                            self.stdout.write(self.style.SUCCESS('adding new task %s' % new_task))
                             if self.scheduler:
                                 self.scheduler.add_task(new_task)
 
@@ -210,7 +214,7 @@ class Command(BaseCommand):
                         self.pks = [t.pk for t in new_qs]
 
                 if options['testmode']:
-                    print('TESTMODE:', options['testmode'])
+                    self.stdout.write(self.style.SUCCESS('TESTMODE:', options['testmode']))
                     raise SystemExit()
 
         except Exception as err:
