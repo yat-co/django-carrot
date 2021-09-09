@@ -2,7 +2,6 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 
-from datetime import datetime
 import logging
 import threading
 import time
@@ -50,10 +49,11 @@ class ScheduledTaskThread(threading.Thread):
         if self.run_now:
             self.scheduled_task.publish()
 
-        self.logger.info(f'Thread for scheduled task: {self.id} added')
+        self.logger.info(f'Thread for scheduled task: {self.id} added, {self.scheduled_task.scheduled_time}')
         if self.scheduled_task.scheduled_time:
             while True:
-                while timezone.now() < self.scheduled_task.next_run_time:
+                while self.scheduled_task.next_run_time < timezone.now():
+                    print(f'Executing scheduled task: {self.id} at {self.scheduled_task.next_run_time}')
                     if not self.active:
                         if self.inactive_reason:
                             self.logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
@@ -71,11 +71,11 @@ class ScheduledTaskThread(threading.Thread):
                     ## TODO: Configurable Sleep Period
                     time.sleep(SLEEP)
                     self.logger.info('Publishing message %s' % self.scheduled_task.task)
-                    self.scheduled_task.publish()
-                    
+
                     # Update Model to Next Time Period
                     self.scheduled_task.last_run_time = self.scheduled_task.next_run_time
                     self.scheduled_task.save()
+                    self.scheduled_task.publish()
         else:
             interval = self.scheduled_task.multiplier * self.scheduled_task.interval_count
             count = 0

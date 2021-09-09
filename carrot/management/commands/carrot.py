@@ -196,7 +196,6 @@ class Command(BaseCommand):
                     self.terminate()
 
                 if self.scheduler or options['testmode']:
-                    self.scheduler.logger = logger
                     new_qs = ScheduledTask.objects.filter(active=True)
                     active_pks = {st.pk for st in new_qs}
                     newly_added = set(self.pks) - active_pks
