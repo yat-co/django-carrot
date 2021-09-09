@@ -122,9 +122,9 @@ class ScheduledTaskManager(object):
         """
         Initiates and starts a scheduler for each given ScheduledTask
         """
-        print('found %i scheduled tasks to run' % self.tasks.count())
+        logger.info('found %i scheduled tasks to run' % self.tasks.count())
         for t in self.tasks:
-            print('starting thread for task %s' % t.task)
+            logger.info('starting thread for task %s' % t.task)
             thread = ScheduledTaskThread(t, self.run_now, **self.filters)
             thread.start()
             self.threads.append(thread)
@@ -142,11 +142,11 @@ class ScheduledTaskManager(object):
         """
         Safely stop the manager
         """
-        print('Attempting to stop %i running threads' % len(self.threads))
+        logger.warning('Attempting to stop %i running threads' % len(self.threads))
 
         for t in self.threads:
-            print('Stopping thread %s' % t)
+            logger.warning('Stopping thread %s' % t)
             t.active = False
             t.inactive_reason = 'A termination of service was requested'
             t.join()
-            print('thread %s stopped' % t)
+            logger.warning('thread %s stopped' % t)
