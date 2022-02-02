@@ -61,7 +61,7 @@ class ScheduledTaskThread(threading.Thread):
 
             while self.scheduled_task.scheduled_time and next_run_time is not None:
                 while (next_run_time or (timezone.now() - timedelta(seconds=5))) > timezone.now():
-                    print(f'Thread waiting for next run time: {next_run_time} vs now {timezone.now()}')
+                    print(f'Thread for queue: {self.queue} waiting for next run time: {next_run_time} vs now {timezone.now()}')
                     if not self.active:
                         if self.inactive_reason:
                             self.logger.warning('Thread stop has been requested because of the following reason: %s.\n Stopping the '
@@ -95,7 +95,7 @@ class ScheduledTaskThread(threading.Thread):
 
             while not self.scheduled_task.scheduled_time or next_run_time is None:
                 while count < interval and next_run_time is None:
-                    print(f'Thread waiting for interval: {interval} vs current {count}')
+                    print(f'Thread queue: {self.queue} waiting for interval: {interval} vs current {count}')
                     if not self.active:
                         if self.inactive_reason:
                             print('Thread stop has been requested because of the following reason: %s.\n Stopping the '
