@@ -118,13 +118,13 @@ class Consumer(threading.Thread):
 
     def __get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Optional[MessageLog]:
         for i in range(0, self.get_message_attempts):
-            log = self.get_message_log(properties, body)
+            log, failure_reason = self.get_message_log(properties, body)
 
             if log:
-                return log
+                return log, None
             time.sleep(0.1)
 
-        return None
+        return None, failure_reason
 
     def get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Optional[MessageLog]:
         """
@@ -155,12 +155,12 @@ class Consumer(threading.Thread):
         try:
             log = MessageLog.objects.get(uuid=properties.message_id)
         except ObjectDoesNotExist:
-            return None
+            return None, "Object Not Found"
 
         if log.status == 'PUBLISHED':
             return log
 
-        return None
+        return None, f"Task Status is {log.status}"
 
     def connect(self) -> pika.SelectConnection:
         """
@@ -288,14 +288,15 @@ class Consumer(threading.Thread):
 
         """
         self.channel.basic_ack(method_frame.delivery_tag)
-        log = self.__get_message_log(properties, body)
+        log, failure_reason = self.__get_message_log(properties, body)
         if log:
             self.active_message_log = log
             log.status = 'IN_PROGRESS'
             log.save()
         else:
-            self.logger.error('Unable to find a MessageLog matching the uuid %s. Ignoring this task' %
-                              properties.message_id)
+            self.logger.error(
+                f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {failure_reason}'
+            )
             return
 
         try:
