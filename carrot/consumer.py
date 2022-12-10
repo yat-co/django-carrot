@@ -117,6 +117,7 @@ class Consumer(threading.Thread):
         return properties[self.serializer.type_header]
 
     def __get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Optional[MessageLog]:
+        failure_reason = None
         for i in range(0, self.get_message_attempts):
             log, failure_reason = self.get_message_log(properties, body)
 
@@ -158,7 +159,7 @@ class Consumer(threading.Thread):
             return None, "Object Not Found"
 
         if log.status == 'PUBLISHED':
-            return log
+            return log, None
 
         return None, f"Task Status is {log.status}"
 
@@ -295,7 +296,7 @@ class Consumer(threading.Thread):
             log.save()
         else:
             self.logger.error(
-                f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {failure_reason}'
+                f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {str(failure_reason)}'
             )
             return
 
