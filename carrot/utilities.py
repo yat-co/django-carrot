@@ -107,6 +107,7 @@ def create_message(task: Union[str, Callable],
                    task_args: tuple = (),
                    exchange: str = '',
                    routing_key: str = None,
+                   validate: bool = True,
                    task_kwargs: dict = None
                    ) -> Message:
     """
@@ -118,7 +119,8 @@ def create_message(task: Union[str, Callable],
     if not task_kwargs:
         task_kwargs = {}
 
-    task = validate_task(task)
+    if validate:
+        task = validate_task(task)
 
     vhost = get_host_from_name(queue)
     msg = Message(virtual_host=vhost, queue=queue, routing_key=routing_key, exchange=exchange, task=task,
@@ -133,6 +135,7 @@ def publish_message(task: Union[str, Callable],
                     queue: str = None,
                     exchange: str = '',
                     routing_key: str = None,
+                    validate: bool = True,
                     **task_kwargs) -> MessageLog:
     """
     Wrapped for :func:`.create_message`, which publishes the task to the queue
@@ -141,7 +144,7 @@ def publish_message(task: Union[str, Callable],
     """
     if not queue:
         queue = 'default'
-    msg = create_message(task, queue, priority, task_args, exchange, routing_key, task_kwargs)
+    msg = create_message(task, queue, priority, task_args, exchange, routing_key, validate, task_kwargs)
     return msg.publish()
 
 
