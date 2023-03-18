@@ -224,6 +224,7 @@ class Message(object):
                  routing_key: str = None,
                  exchange: str = '',
                  priority: int = 0,
+                 validate: bool = True,
                  task_args: tuple = (),
                  task_kwargs: Union[str, dict] = None) -> None:
 
@@ -246,6 +247,7 @@ class Message(object):
         self.queue = queue
         self.routing_key = routing_key
         self.priority = priority
+        self.validate = validate
 
         self.task = task
         self.task_args = task_args
@@ -292,6 +294,7 @@ class Message(object):
             task_args=self.task_args,
             content=keyword_arguments,
             task=self.task,
+            validate=self.validate,
             publish_time=timezone.now(),
         )
 
