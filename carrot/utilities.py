@@ -124,7 +124,7 @@ def create_message(task: Union[str, Callable],
 
     vhost = get_host_from_name(queue)
     msg = Message(virtual_host=vhost, queue=queue, routing_key=routing_key, exchange=exchange, task=task,
-                  priority=priority, task_args=task_args, task_kwargs=task_kwargs)
+                  priority=priority, validate=validate, task_args=task_args, task_kwargs=task_kwargs)
 
     return msg
 
