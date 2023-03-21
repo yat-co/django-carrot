@@ -295,7 +295,11 @@ class Consumer(threading.Thread):
             log.status = 'IN_PROGRESS'
             log.save()
         else:
-            if log.status == 'COMPLETED':
+            if log is None:
+                self.logger.error(
+                    f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {str(failure_reason)}'
+                )
+            elif log.status == 'COMPLETED':
                 self.logger.warning(
                     f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {str(failure_reason)}'
                 )
