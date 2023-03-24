@@ -14,9 +14,12 @@ from django.db.models import QuerySet
 class MessageLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = MessageLog
-        fields = 'status', 'exchange', 'queue', 'routing_key', 'uuid', 'priority', 'task', 'task_args', \
-                 'content', 'exception', 'traceback', 'output', 'publish_time', 'failure_time', 'completion_time', \
-                 'log', 'id', 'virtual_host'
+        fields = [
+            'status', 'exchange', 'queue', 'routing_key', 'uuid', 'priority', 'task',
+            'task_args', 'content', 'validate', 'exception', 'traceback', 'output',
+            'publish_time', 'failure_time', 'completion_time', 'log', 'id',
+            'virtual_host'
+        ]
 
 
 class SmallPagination(pagination.PageNumberPagination):

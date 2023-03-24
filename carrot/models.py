@@ -50,6 +50,7 @@ class MessageLog(models.Model):
     routing_key = models.CharField(max_length=200, blank=True, null=True)
     uuid = models.CharField(max_length=200)
     priority = models.PositiveIntegerField(default=0)
+    validate = models.BooleanField(default=True)
 
     task = models.CharField(max_length=200)  #: the import path for the task to be executed
     task_args = models.TextField(null=True, blank=True, verbose_name='Task positional arguments')
@@ -103,7 +104,8 @@ class MessageLog(models.Model):
         """
         from carrot.utilities import publish_message
         msg = publish_message(self.task, *self.positionals, priority=self.priority, queue=self.queue,
-                              exchange=self.exchange, routing_key=self.routing_key, **self.keywords)
+                              exchange=self.exchange, routing_key=self.routing_key, validate=self.validate, 
+                              **self.keywords)
 
         if self.pk:
             self.delete()
@@ -136,6 +138,7 @@ class ScheduledTask(models.Model):
     task = models.CharField(max_length=200)
     task_args = models.TextField(null=True, blank=True, verbose_name='Positional arguments')
     content = models.TextField(null=True, blank=True, verbose_name='Keyword arguments')
+    validate = models.BooleanField(default=True)
 
     active = models.BooleanField(default=True)
 
@@ -186,7 +189,7 @@ class ScheduledTask(models.Model):
             kwargs = {}
         return publish_message(self.task, *self.positional_arguments, priority=priority, queue=self.queue,
                                exchange=self.exchange or '', routing_key=self.routing_key or self.queue,
-                               **kwargs)
+                               validate=self.validate, **kwargs)
 
     def __str__(self) -> models.CharField:
         return self.task

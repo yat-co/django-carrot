@@ -107,6 +107,7 @@ def create_message(task: Union[str, Callable],
                    task_args: tuple = (),
                    exchange: str = '',
                    routing_key: str = None,
+                   validate: bool = True,
                    task_kwargs: dict = None
                    ) -> Message:
     """
@@ -118,11 +119,12 @@ def create_message(task: Union[str, Callable],
     if not task_kwargs:
         task_kwargs = {}
 
-    task = validate_task(task)
+    if validate:
+        task = validate_task(task)
 
     vhost = get_host_from_name(queue)
     msg = Message(virtual_host=vhost, queue=queue, routing_key=routing_key, exchange=exchange, task=task,
-                  priority=priority, task_args=task_args, task_kwargs=task_kwargs)
+                  priority=priority, validate=validate, task_args=task_args, task_kwargs=task_kwargs)
 
     return msg
 
@@ -133,6 +135,7 @@ def publish_message(task: Union[str, Callable],
                     queue: str = None,
                     exchange: str = '',
                     routing_key: str = None,
+                    validate: bool = True,
                     **task_kwargs) -> MessageLog:
     """
     Wrapped for :func:`.create_message`, which publishes the task to the queue
@@ -141,7 +144,7 @@ def publish_message(task: Union[str, Callable],
     """
     if not queue:
         queue = 'default'
-    msg = create_message(task, queue, priority, task_args, exchange, routing_key, task_kwargs)
+    msg = create_message(task, queue, priority, task_args, exchange, routing_key, validate, task_kwargs)
     return msg.publish()
 
 
@@ -150,6 +153,7 @@ def create_scheduled_task(task: Union[str, Callable],
                           last_run_time: datetime = None,
                           task_name: str = None,
                           queue: str = None,
+                          validate: bool = True,
                           **kwargs) -> ScheduledTask:
     """
     Helper function for creating a :class:`carrot.models.ScheduledTask`
@@ -161,7 +165,8 @@ def create_scheduled_task(task: Union[str, Callable],
         else:
             raise Exception('You must provide a task_name or task')
 
-    task = validate_task(task)
+    if validate:
+        task = validate_task(task)
 
     try:
         assert isinstance(interval, dict)
@@ -181,6 +186,7 @@ def create_scheduled_task(task: Union[str, Callable],
                 routing_key=queue,
                 task=task,
                 content=json.dumps(kwargs or '{}'),
+                validate=validate
         )
     except IntegrityError:
         raise IntegrityError('A ScheduledTask with this task_name already exists. Please specific a unique name using '
