@@ -122,7 +122,7 @@ class Consumer(threading.Thread):
             log, failure_reason = self.get_message_log(properties, body)
 
             if log:
-                return log, None
+                return log, failure_reason
             time.sleep(0.1)
 
         return None, failure_reason
@@ -161,7 +161,7 @@ class Consumer(threading.Thread):
         if log.status == 'PUBLISHED':
             return log, None
 
-        return None, f"Task Status is {log.status}"
+        return log, f"Task Status is {log.status}"
 
     def connect(self) -> pika.SelectConnection:
         """
@@ -290,7 +290,7 @@ class Consumer(threading.Thread):
         """
         self.channel.basic_ack(method_frame.delivery_tag)
         log, failure_reason = self.__get_message_log(properties, body)
-        if log:
+        if log and failure_reason is None:
             self.active_message_log = log
             log.status = 'IN_PROGRESS'
             log.save()
