@@ -15,4 +15,9 @@ class Migration(migrations.Migration):
             name='last_run_time',
             field=models.DateTimeField(blank=True, null=True),
         ),
+        migrations.AlterField(
+            model_name='scheduledtask',
+            name='task_name',
+            field=models.CharField(max_length=200, unique=True),
+        ),
     ]
