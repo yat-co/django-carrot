@@ -18,7 +18,7 @@ import logging
 import importlib
 import pika
 import time
-from typing import Optional, Type, List, Dict, Any, Callable, Union
+from typing import Optional, Type, List, Dict, Any, Callable, Union, Tuple
 
 
 LOGGING_FORMAT = '%(threadName)-10s %(asctime)-10s %(levelname)s:: %(message)s'
@@ -116,18 +116,39 @@ class Consumer(threading.Thread):
         """
         return properties[self.serializer.type_header]
 
-    def __get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Optional[MessageLog]:
+    def __get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Tuple[Optional[MessageLog], str, bool]:
+        """Wrapper for get Message log
+
+        Parameters
+        ----------
+        properties : pika.spec.BasicProperties
+            Pika Message Properties
+        body : bytes
+            Message Body in Bytes
+
+        Returns
+        -------
+        Tuple[Optional[MessageLog], str, bool]
+            log : Optional[MessageLog]
+                Optionally None message log
+            failure_reason : str
+                Failure reason if failed to fetch message log
+            acknowledged : bool
+                Indicator if message was already Acknowledged
+        """
         failure_reason = None
+        acknowledged = False
         for i in range(0, self.get_message_attempts):
-            log, failure_reason = self.get_message_log(properties, body)
+            log, failure_reason, acknowledged = self.get_message_log(properties, body)
 
             if log:
-                return log, None
+                return log, None, False
+            
             time.sleep(0.1)
 
-        return None, failure_reason
+        return None, failure_reason, acknowledged
 
-    def get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Optional[MessageLog]:
+    def get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Tuple[Optional[MessageLog], str, bool]:
         """
         Finds a MessageLog based on the content of the RabbitMQ message
 
@@ -156,12 +177,16 @@ class Consumer(threading.Thread):
         try:
             log = MessageLog.objects.get(uuid=properties.message_id)
         except ObjectDoesNotExist:
-            return None, "Object Not Found"
+            return None, "Object Not Found", False
 
-        if log.status == 'PUBLISHED':
-            return log, None
+        if log.status in "PUBLISHED":
+            return log, None, False
 
-        return None, f"Task Status is {log.status}"
+        failure_reason = f"Task Status is {log.status}"
+        if log.status in ("IN_PROGRESS", "COMPLETED"):
+            return None, failure_reason, True
+
+        return None, failure_reason, False
 
     def connect(self) -> pika.SelectConnection:
         """
@@ -289,24 +314,19 @@ class Consumer(threading.Thread):
 
         """
         self.channel.basic_ack(method_frame.delivery_tag)
-        log, failure_reason = self.__get_message_log(properties, body)
+        log, failure_reason, acknowledged = self.__get_message_log(properties, body)
         if log:
             self.active_message_log = log
-            log.status = 'IN_PROGRESS'
+            log.status = "IN_PROGRESS"
             log.save()
         else:
-            if log is None:
-                self.logger.error(
-                    f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {str(failure_reason)}'
-                )
-            elif log.status == 'COMPLETED':
-                self.logger.warning(
-                    f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {str(failure_reason)}'
-                )
-            else:
-                self.logger.error(
-                    f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {str(failure_reason)}'
-                )
+            # Continue if message has been acknowledged and already in progress
+            if acknowledged:
+                return
+
+            self.logger.error(
+                f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {str(failure_reason)}'
+            )
             return
 
         try:
