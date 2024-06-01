@@ -183,6 +183,7 @@ class BaseMessageSerializer(object):
         kwargs['properties'] = pika.BasicProperties(**self.properties())
         channel.basic_publish(**kwargs)
         connection.close()
+        del connection;
 
     @classmethod
     def serialize_arguments(cls, body: str) -> Tuple[tuple, dict]:
