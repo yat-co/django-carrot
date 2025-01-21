@@ -113,6 +113,7 @@ class MessageLog(models.Model):
         return msg
 
     class Meta:
+        app_label = "carrot"
         ordering = '-failure_time', '-completion_time', 'status', '-priority', '-publish_time',
 
 
@@ -144,6 +145,9 @@ class ScheduledTask(models.Model):
 
     task_name = models.CharField(max_length=200, unique=True)
 
+    class Meta:
+        app_label = "carrot"
+        
     def get_absolute_url(self) -> str:
         return reverse('edit-scheduled-task', args=[self.pk])
 
