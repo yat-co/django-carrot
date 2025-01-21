@@ -53,6 +53,6 @@ setup(
         'Topic :: Internet :: WWW/HTTP',
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content',
     ],
-    install_requires=['django>=5.0.0', 'json2html==1.3.0', 'pika>=0.10.0', 'djangorestframework>=3.6', 'psutil>=5.4.5']
+    install_requires=['django>= 5.0.6', 'json2html==1.3.0', 'pika>=0.10.0', 'djangorestframework>=3.6', 'psutil>=5.4.5']
 )
 
