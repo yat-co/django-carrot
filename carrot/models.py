@@ -43,7 +43,7 @@ class MessageLog(models.Model):
         ('FAILED', 'Failed'),
         ('COMPLETED', 'Completed'),
     ) #:
-
+    id = models.BigAutoField(primary_key=True)  # Use BigAutoField for the primary key
     status = models.CharField(max_length=11, choices=STATUS_CHOICES, default='PUBLISHED')
     exchange = models.CharField(max_length=200, blank=True, null=True)  #: the exchange
     queue = models.CharField(max_length=200, blank=True, null=True)
