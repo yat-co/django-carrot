@@ -80,7 +80,10 @@ class Command(BaseCommand):
         parser.add_argument('--loglevel', type=str, default='DEBUG', help='The logging level. Must be one of DEBUG, '
                                                                           'INFO, WARNING, ERROR, CRITICAL')
         parser.add_argument(
-            '--consume_queues', type=str, required=False, help='Comma seperated Queues to Consume'
+            '--incl_queues', type=str, required=False, help='Comma seperated Queues to Include for Consumers'
+        )
+        parser.add_argument(
+            '--excl_queues', type=str, required=False, help='Comma seperated Queues to Exclude for Consumers'
         )
         parser.add_argument('--testmode', dest='testmode', action='store_true', default=False,
                             help='Run in test mode. Prevents the command from running as a service. Should only be '

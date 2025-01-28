@@ -74,7 +74,10 @@ class Command(BaseCommand):
                                                                           'INFO, WARNING, ERROR, CRITICAL')
 
         parser.add_argument(
-            '--consume_queues', type=str, required=False, help='Comma seperated Queues to Consume'
+            '--incl_queues', type=str, required=False, help='Comma seperated Queues to Include for Consumers'
+        )
+        parser.add_argument(
+            '--excl_queues', type=str, required=False, help='Comma seperated Queues to Exclude for Consumers'
         )
         parser.add_argument('--testmode', dest='testmode', action='store_true', default=False,
                             help='Run in test mode. Prevents the command from running as a service. Should only be '
@@ -126,14 +129,26 @@ class Command(BaseCommand):
 
         run_scheduler = options['run_scheduler']
 
-        consume_queues_str: Optional[List[str]] = options.get("consume_queues")
+        # Get Include or Exclude Queues Parameters
+        incl_queues_str: Optional[List[str]] = options.get("incl_queues")
+        excl_queues_str: Optional[List[str]] = options.get("excl_queues")
+        assert (
+            incl_queues_str is None or excl_queues_str is None
+        ), "Can not provide `incl_queues` and `excl_queues`, provide either or neither"
+
         try:
             queues = [
                 q for q in settings.CARROT['queues'] if q.get('consumable', True)
             ]
-            if consume_queues_str is not None:
-                consume_queues = consume_queues_str.split(",")
-                queues = [q for q in queues if q.get("name") in consume_queues]
+            if incl_queues_str is not None:
+                incl_queues = incl_queues_str.split(",")
+                queues = [q for q in queues if q.get("name") in incl_queues]
+
+            elif excl_queues_str is not None:
+                excl_queues = excl_queues_str.split(",")
+                queues = [
+                    q for q in queues if q.get("name") not in excl_queues
+                ]
 
         except (AttributeError, KeyError):
             queues = [{'name': 'default', 'host': DEFAULT_BROKER}]
@@ -191,8 +206,10 @@ class Command(BaseCommand):
                                                      % (c.concurrency, queue['name'])))
 
             msg: str = f'All queues consumer sets started successfully. Full logs are at {logfile}.'
-            if consume_queues_str is not None:
-                msg: str = f'{consume_queues_str} queues consumer sets started successfully. Full logs are at {logfile}.'
+            if incl_queues_str is not None:
+                msg: str = f'{incl_queues_str} queues consumer sets started successfully. Full logs are at {logfile}.'
+            elif excl_queues_str is not None:
+                msg: str = f'All queues excl=`{excl_queues_str}` consumer sets started successfully. Full logs are at {logfile}.'
 
             self.stdout.write(self.style.SUCCESS(msg))
 
