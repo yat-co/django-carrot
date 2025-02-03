@@ -380,9 +380,22 @@
             if (search) {
               var url = url + '&search=' + search
             }
-            let { data } = await axios.get(url)
-            commit('SET_COUNT', data.count)
-            commit('SET_TASKS', data.results)
+
+            try {
+              let { data } = await axios.get(url)
+              commit('SET_COUNT', data.count)
+              commit('SET_TASKS', data.results)
+            } catch (error) {
+              if (error.response) {
+                const status = error.response.status;
+                if (status === 401 || status === 403 || status === 404) {
+                  console.error(`Error ${status}: Refreshing the page.`);
+                  window.location.reload(); // Refresh window on these status codes
+                }
+              } else {
+                console.error('Unexpected error:', error);
+              }
+            }
         },
         async getTaskChoices({ commit }) {
             var { data } = await axios.get('/carrot/api/scheduled-tasks/task-choices/')

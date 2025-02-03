@@ -48,7 +48,7 @@ class MessageLog(models.Model):
     exchange = models.CharField(max_length=200, blank=True, null=True)  #: the exchange
     queue = models.CharField(max_length=200, blank=True, null=True)
     routing_key = models.CharField(max_length=200, blank=True, null=True)
-    uuid = models.CharField(max_length=200)
+    uuid = models.CharField(max_length=200, db_index=True)
     priority = models.PositiveIntegerField(default=0)
     validate = models.BooleanField(default=True)
 
