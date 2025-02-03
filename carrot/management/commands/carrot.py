@@ -1,19 +1,20 @@
-import time
-
 from carrot.consumer import ConsumerSet, LOGGING_FORMAT
 from carrot.models import ScheduledTask
 from carrot.objects import VirtualHost
 from carrot.scheduler import ScheduledTaskManager
 from django.core.management.base import BaseCommand, CommandParser
 from django.conf import settings
+
 from carrot import DEFAULT_BROKER
+
 import sys
 import os
 import logging
 import signal
 import psutil
+import time
 import types
-from typing import Optional
+from typing import List, Optional
 
 
 class Command(BaseCommand):
@@ -71,6 +72,13 @@ class Command(BaseCommand):
         parser.set_defaults(testmode=False)
         parser.add_argument('--loglevel', type=str, default='DEBUG', help='The logging level. Must be one of DEBUG, '
                                                                           'INFO, WARNING, ERROR, CRITICAL')
+
+        parser.add_argument(
+            '--incl_queues', type=str, required=False, help='Comma seperated Queues to Include for Consumers'
+        )
+        parser.add_argument(
+            '--excl_queues', type=str, required=False, help='Comma seperated Queues to Exclude for Consumers'
+        )
         parser.add_argument('--testmode', dest='testmode', action='store_true', default=False,
                             help='Run in test mode. Prevents the command from running as a service. Should only be '
                                  'used when running Carrot\'s tests')
@@ -121,19 +129,32 @@ class Command(BaseCommand):
 
         run_scheduler = options['run_scheduler']
 
+        # Get Include or Exclude Queues Parameters
+        incl_queues_str: Optional[List[str]] = options.get("incl_queues")
+        excl_queues_str: Optional[List[str]] = options.get("excl_queues")
+        assert (
+            incl_queues_str is None or excl_queues_str is None
+        ), "Can not provide `incl_queues` and `excl_queues`, provide either or neither"
+
         try:
-            queues = [q for q in settings.CARROT['queues'] if q.get('consumable', True)]
+            queues = [
+                q for q in settings.CARROT['queues'] if q.get('consumable', True)
+            ]
+            if incl_queues_str is not None:
+                incl_queues = incl_queues_str.split(",")
+                queues = [q for q in queues if q.get("name") in incl_queues]
+
+            elif excl_queues_str is not None:
+                excl_queues = excl_queues_str.split(",")
+                queues = [
+                    q for q in queues if q.get("name") not in excl_queues
+                ]
 
         except (AttributeError, KeyError):
-            queues = [{
-                'name': 'default',
-                'host': DEFAULT_BROKER
-            }]
+            queues = [{'name': 'default', 'host': DEFAULT_BROKER}]
 
-
-
+        logfile: str = options['logfile']
         try:
-
 
             # logger
             loglevel = getattr(logging, options.get('loglevel', 'DEBUG'))
@@ -141,7 +162,7 @@ class Command(BaseCommand):
             logger = logging.getLogger('carrot')
             logger.setLevel(loglevel)
 
-            file_handler = logging.FileHandler(options['logfile'])
+            file_handler = logging.FileHandler(logfile)
             file_handler.setLevel(loglevel)
 
             stream_handler = logging.StreamHandler()
@@ -184,8 +205,13 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS('Successfully started %i consumers for queue %s'
                                                      % (c.concurrency, queue['name'])))
 
-            self.stdout.write(self.style.SUCCESS('All queues consumer sets started successfully. Full logs are at %s.'
-                                                 % options['logfile']))
+            msg: str = f'All queues consumer sets started successfully. Full logs are at {logfile}.'
+            if incl_queues_str is not None:
+                msg: str = f'{incl_queues_str} queues consumer sets started successfully. Full logs are at {logfile}.'
+            elif excl_queues_str is not None:
+                msg: str = f'All queues excl=`{excl_queues_str}` consumer sets started successfully. Full logs are at {logfile}.'
+
+            self.stdout.write(self.style.SUCCESS(msg))
 
             qs = ScheduledTask.objects.filter(active=True)
             self.pks = [t.pk for t in qs]

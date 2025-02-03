@@ -79,6 +79,12 @@ class Command(BaseCommand):
                             default='carrot.objects.Consumer')
         parser.add_argument('--loglevel', type=str, default='DEBUG', help='The logging level. Must be one of DEBUG, '
                                                                           'INFO, WARNING, ERROR, CRITICAL')
+        parser.add_argument(
+            '--incl_queues', type=str, required=False, help='Comma seperated Queues to Include for Consumers'
+        )
+        parser.add_argument(
+            '--excl_queues', type=str, required=False, help='Comma seperated Queues to Exclude for Consumers'
+        )
         parser.add_argument('--testmode', dest='testmode', action='store_true', default=False,
                             help='Run in test mode. Prevents the command from running as a service. Should only be '
                                  'used when running Carrot\'s tests')
@@ -116,8 +122,11 @@ class Command(BaseCommand):
         if kwargs:
             self.options = kwargs
 
-        options: list = [sys.executable, sys.argv[0], 'carrot', '--verbosity', str(kwargs.get('verbosity', 2)),
-                         '--logfile', self.options['logfile'], '--loglevel', self.options['loglevel']]
+        options: list = [
+            sys.executable, sys.argv[0], 'carrot', '--verbosity', 
+            str(kwargs.get('verbosity', 2)), '--logfile', self.options['logfile'], 
+            '--loglevel', self.options['loglevel']
+        ]
 
         if not self.options['run_scheduler']:
             options.append('--no-scheduler')
