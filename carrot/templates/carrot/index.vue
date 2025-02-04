@@ -9,6 +9,9 @@
     <link href='https://fonts.googleapis.com/css?family=Roboto:300,400,500,700|Material+Icons' rel="stylesheet" type="text/css">
     <link href="{% static 'carrot/vuetify.min.css' %}" rel="stylesheet" type="text/css">
     <!--<link rel="icon" type="image/png" href="favicon-32x32.png" sizes="32x32">-->
+    <style>
+      .text-center {text-align: center}
+    </style
 </head>
 <body>
   <div id="app">
@@ -311,9 +314,9 @@
                       <tr v-if="tabs === 'tab-published'" @click.stop="selectedMessageLog = props.item">
                         <td class="text-center">[{ props.item.status }]</td>
                         <td class="text-center">[{ props.item.queue }]</td>
-                        <td>[{ props.item.priority }]</td>
+                        <td class="text-center">[{ props.item.priority }]</td>
                         <td>[{ props.item.task }]</td>
-                        <td>[{ props.item.worker }]</td>
+                        <td class="text-center">[{ props.item.worker }]</td>
                         <td>[{ props.item.task_args }]</td>
                         <td>[{ props.item.content }]</td>
                       </tr>
@@ -329,7 +332,7 @@
                         <td>[{ props.item.completion_time | displayTime }]</td>
                         <td class="text-center">[{ props.item.queue }]</td>
                         <td>[{ props.item.task }]</td>
-                        <td>[{ props.item.worker }]</td>
+                        <td class="text-center">[{ props.item.worker }]</td>
                         <td>[{ props.item.task_args }]</td>
                         <td>[{ props.item.content | cropped }]</td>
                       </tr>
