@@ -310,6 +310,7 @@
                   <template slot="items" slot-scope="props" >
                       <tr v-if="tabs === 'tab-published'" @click.stop="selectedMessageLog = props.item">
                         <td class="text-center">[{ props.item.status }]</td>
+                        <td class="text-center">[{ props.item.queue }]</td>
                         <td>[{ props.item.priority }]</td>
                         <td>[{ props.item.task }]</td>
                         <td>[{ props.item.worker }]</td>
@@ -326,6 +327,7 @@
                       </tr>
                       <tr v-else-if="tabs === 'tab-completed'" @click.stop="selectedMessageLog = props.item">
                         <td>[{ props.item.completion_time | displayTime }]</td>
+                        <td class="text-center">[{ props.item.queue }]</td>
                         <td>[{ props.item.task }]</td>
                         <td>[{ props.item.worker }]</td>
                         <td>[{ props.item.task_args }]</td>
@@ -788,9 +790,14 @@
         getHeaders () {
           if (this.tabs === 'tab-published') {
             return [
-              {
+            {
                 text: 'Status',
                 value: 'status',
+                align: 'center',
+                sortable: true,
+              }, {
+                text: 'Queue',
+                value: 'queue',
                 align: 'center',
                 sortable: true,
               }, {
@@ -850,6 +857,11 @@
                 text: 'Completion time',
                 value: 'completion_time',
                 align: 'left',
+              }, {
+                text: 'Queue',
+                value: 'queue',
+                align: 'center',
+                sortable: true,
               }, {
                 text: 'Task',
                 value: 'task',
