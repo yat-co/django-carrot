@@ -199,7 +199,9 @@ class Command(BaseCommand):
 
             self.stdout.write('Attempting to start the process')
             self.start(**options)
-            self.stdout.write(self.style.SUCCESS('Process restarted successfully'))
+            self.stdout.write(
+                self.style.SUCCESS(f'Process restarted successfully pid={self.pid}')
+            )
 
         elif mode == 'status':
             if self.pid:

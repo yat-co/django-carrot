@@ -83,6 +83,10 @@ class Consumer(threading.Thread):
         self.exchange_arguments = exchange_arguments
         self.durable = durable
 
+    @property
+    def worker_display(self) -> str:
+        return self.worker or ""
+
     def add_failure_callback(self, cb: Callable) -> None:
         """
         Registers a callback that gets called when there is any kind of error with the `.consume()` method
@@ -302,7 +306,7 @@ class Consumer(threading.Thread):
         This method sets a channel prefetch count of zero to prevent dropouts
         """
         self.logger.info(
-            f"Starting consumer=`{self.name}` on worker=`{self.worker or ''}`"
+            f"Starting consumer=`{self.name}` on worker=`{self.worker_display}`"
         )
         self.channel.add_on_cancel_callback(self.on_consumer_cancelled)
         self.channel.basic_qos(prefetch_count=1)
@@ -351,7 +355,7 @@ class Consumer(threading.Thread):
                       err)
 
         self.logger.info(
-            f'[worker={self.worker or ''}] Consuming task {task_type}, ID={properties.message_id}'
+            f"[worker={self.worker_display}] Consuming task {task_type}, ID={properties.message_id}"
         )
 
         try:
@@ -365,7 +369,7 @@ class Consumer(threading.Thread):
         except Exception as err:
             return self.fail(log, 'Unable to process the message due to an error collecting the task arguments: %s' % err)
 
-        base_msg: str = f"[worker={self.worker or ''}] Starting task {func.__module__}.{func.__name__}"
+        base_msg: str = f"[worker={self.worker_display}] Starting task {func.__module__}.{func.__name__}"
         start_msg = '{} {} INFO:: {}'.format(
             self.name, timezone.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
             base_msg
@@ -382,7 +386,7 @@ class Consumer(threading.Thread):
                 self.task_log.append(task_logs)
                 self.logger.info(task_logs)
 
-            base_msg: str = f"[worker={self.worker or ''}] Task {log.task} completed successfully with response {output}"
+            base_msg: str = f"[worker={self.worker_display}] Task {log.task} completed successfully with response {output}"
             success = '{} {} INFO:: {}'.format(
                 self.name, 
                 timezone.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
