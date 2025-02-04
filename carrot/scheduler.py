@@ -77,7 +77,7 @@ class ScheduledTaskThread(threading.Thread):
                         self.logger.warning('Current task has been removed from the queryset. Stopping the thread')
                         return
 
-                    ## TODO: Configurable Sleep Period
+                    # TODO: Configurable Sleep Period
                     time.sleep(SLEEP)
 
                 # Update Model to Next Time Period

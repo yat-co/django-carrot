@@ -79,6 +79,9 @@ class Command(BaseCommand):
         parser.add_argument(
             '--excl_queues', type=str, required=False, help='Comma seperated Queues to Exclude for Consumers'
         )
+        parser.add_argument(
+            '--worker', type=str, required=False, help='Node Worker Name (Optional)'
+        )
         parser.add_argument('--testmode', dest='testmode', action='store_true', default=False,
                             help='Run in test mode. Prevents the command from running as a service. Should only be '
                                  'used when running Carrot\'s tests')
@@ -130,11 +133,19 @@ class Command(BaseCommand):
         run_scheduler = options['run_scheduler']
 
         # Get Include or Exclude Queues Parameters
-        incl_queues_str: Optional[List[str]] = options.get("incl_queues")
-        excl_queues_str: Optional[List[str]] = options.get("excl_queues")
+        incl_queues_str: Optional[str] = options.get("incl_queues")
+        excl_queues_str: Optional[str] = options.get("excl_queues")
         assert (
             incl_queues_str is None or excl_queues_str is None
         ), "Can not provide `incl_queues` and `excl_queues`, provide either or neither"
+
+        # Get Worker and Ensure Worker Provided in the Event of Splitting up Consumers
+        worker: Optional[str] = options.get("worker")
+        if incl_queues_str is not None or excl_queues_str is not None:
+            if worker is None:
+                raise ValueError(
+                    f"Must Provide Worker Name if Queues Included/Excluded Provided"
+                )
 
         try:
             queues = [
@@ -186,18 +197,19 @@ class Command(BaseCommand):
             # consumers
             for queue in queues:
                 kwargs = {
-                    'queue': queue['name'],
-                    'logger': logger,
-                    'concurrency': queue.get('concurrency', 1),
+                    "queue": queue["name"],
+                    "worker": worker,
+                    "logger": logger,
+                    "concurrency": queue.get("concurrency", 1),
                 }
 
-                if queue.get('consumer_class', None):
-                    kwargs['consumer_class'] = queue.get('consumer_class')
+                if queue.get("consumer_class", None):
+                    kwargs["consumer_class"] = queue.get("consumer_class")
 
                 try:
-                    vhost = VirtualHost(**queue['host'])
+                    vhost = VirtualHost(**queue["host"])
                 except TypeError:
-                    vhost = VirtualHost(url=queue['host'])
+                    vhost = VirtualHost(url=queue["host"])
 
                 c = ConsumerSet(host=vhost, **kwargs)
                 c.start_consuming()
@@ -207,9 +219,9 @@ class Command(BaseCommand):
 
             msg: str = f'All queues consumer sets started successfully. Full logs are at {logfile}.'
             if incl_queues_str is not None:
-                msg: str = f'{incl_queues_str} queues consumer sets started successfully. Full logs are at {logfile}.'
+                msg: str = f'[Worker={worker}] {incl_queues_str} queues consumer sets started successfully. Full logs are at {logfile}.'
             elif excl_queues_str is not None:
-                msg: str = f'All queues excl=`{excl_queues_str}` consumer sets started successfully. Full logs are at {logfile}.'
+                msg: str = f'[Worker={worker}] All queues excl=`{excl_queues_str}` consumer sets started successfully. Full logs are at {logfile}.'
 
             self.stdout.write(self.style.SUCCESS(msg))
 
@@ -218,6 +230,19 @@ class Command(BaseCommand):
 
             while True:
                 time.sleep(1)
+                # Check status of threads
+                cs: ConsumerSet
+                for cs in self.active_consumer_sets:
+                    for thread in cs.threads:
+                        if thread.is_alive() or thread.alert_dead_thread:
+                            continue
+
+                        logger.error(
+                            f"Consumer=`{thread.name}` on worker=`{thread.worker or ''}` died"
+                        )
+                        thread.alert_dead_thread = True  # Alert thread is dead
+                        # TODO: Look at adding consumer set back
+
                 if not self.run:
                     self.terminate()
 

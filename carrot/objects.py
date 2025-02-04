@@ -2,7 +2,7 @@ import importlib
 import json
 import logging
 import uuid
-from typing import Tuple, Callable, Dict, Any, Union
+from typing import Tuple, Callable, Dict, Any, Union, Optional
 
 import pika
 from django.utils import timezone
@@ -225,6 +225,7 @@ class Message(object):
                  exchange: str = '',
                  priority: int = 0,
                  validate: bool = True,
+                 worker: Optional[str] = None,
                  task_args: tuple = (),
                  task_kwargs: Union[str, dict] = None) -> None:
 
@@ -247,7 +248,8 @@ class Message(object):
         self.queue = queue
         self.routing_key = routing_key
         self.priority = priority
-        self.validate = validate
+        self.validate: str = validate
+        self.worker: Optional[str] = worker
 
         self.task = task
         self.task_args = task_args

@@ -74,6 +74,10 @@
                           <v-list-tile-content class="align-end">[{ selectedMessageLog.priority }]</v-list-tile-content>
                       </v-list-tile>
                       <v-list-tile>
+                          <v-list-tile-content>Worker</v-list-tile-content>
+                          <v-list-tile-content class="align-end">[{ selectedMessageLog.worker }]</v-list-tile-content>
+                      </v-list-tile>
+                      <v-list-tile>
                           <v-list-tile-content>Publish time</v-list-tile-content>
                           <v-list-tile-content class="align-end">[{ selectedMessageLog.publish_time | displayTime }]</v-list-tile-content>
                       </v-list-tile>
@@ -188,6 +192,16 @@
                           <v-flex xs6>
                               <v-text-field
                                       multi-line
+                                      value="worker"
+                                      label="Worker"
+                                      @change="revalidate"
+                                      :error-messages="positionalErrors"
+                                      v-model="selectedScheduledTask.worker"
+                              ></v-text-field>
+                          </v-flex>
+                          <v-flex xs6>
+                              <v-text-field
+                                      multi-line
                                       value="taskArgs"
                                       label="Positional arguments"
                                       @change="revalidate"
@@ -295,14 +309,17 @@
                 >
                   <template slot="items" slot-scope="props" >
                       <tr v-if="tabs === 'tab-published'" @click.stop="selectedMessageLog = props.item">
+                        <td class="text-center">[{ props.item.status }]</td>
                         <td>[{ props.item.priority }]</td>
                         <td>[{ props.item.task }]</td>
+                        <td>[{ props.item.worker }]</td>
                         <td>[{ props.item.task_args }]</td>
                         <td>[{ props.item.content }]</td>
                       </tr>
                       <tr v-else-if="tabs === 'tab-failed'" @click.stop="selectedMessageLog = props.item">
                         <td>[{ props.item.failure_time | displayTime }]</td>
                         <td>[{ props.item.task }]</td>
+                        <td>[{ props.item.worker }]</td>
                         <td>[{ props.item.task_args }]</td>
                         <td>[{ props.item.content }]</td>
                         <td>[{ props.item.exception }]</td>
@@ -310,6 +327,7 @@
                       <tr v-else-if="tabs === 'tab-completed'" @click.stop="selectedMessageLog = props.item">
                         <td>[{ props.item.completion_time | displayTime }]</td>
                         <td>[{ props.item.task }]</td>
+                        <td>[{ props.item.worker }]</td>
                         <td>[{ props.item.task_args }]</td>
                         <td>[{ props.item.content | cropped }]</td>
                       </tr>
@@ -771,6 +789,11 @@
           if (this.tabs === 'tab-published') {
             return [
               {
+                text: 'Status',
+                value: 'status',
+                align: 'center',
+                sortable: true,
+              }, {
                 text: 'Priority',
                 value: 'priority',
                 align: 'left',
@@ -778,6 +801,10 @@
               }, {
                 text: 'Task',
                 value: 'task',
+                align: 'left',
+              }, {
+                text: 'Worker',
+                value: 'worker',
                 align: 'left',
               }, {
                 text: 'Arguments',
@@ -798,6 +825,10 @@
               }, {
                 text: 'Task',
                 value: 'task',
+                align: 'left',
+              }, {
+                text: 'Worker',
+                value: 'worker',
                 align: 'left',
               }, {
                 text: 'Arguments',
@@ -822,6 +853,10 @@
               }, {
                 text: 'Task',
                 value: 'task',
+                align: 'left',
+              }, {
+                text: 'Worker',
+                value: 'worker',
                 align: 'left',
               }, {
                 text: 'Arguments',
