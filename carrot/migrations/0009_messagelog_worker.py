@@ -19,4 +19,8 @@ class Migration(migrations.Migration):
             name='scheduledtask',
             options={'ordering': ('-task', '-pk')},
         ),
+        migrations.AlterModelOptions(
+            name='messagelog',
+            options={'ordering': ('-failure_time', '-completion_time', 'status', '-priority', 'publish_time')},
+        ),
     ]

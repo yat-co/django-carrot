@@ -149,6 +149,22 @@
                       <v-btn flat text class="error" @click="deleteOne"><v-icon left>close</v-icon>Delete</v-btn>
                       <v-btn flat text class="blue" @click="requeueOne"><v-icon left>cached</v-icon>Requeue</v-btn>
                   </v-card-actions>
+                  <div v-if="selectedMessageLog.status === 'IN_PROGRESS'">
+                    <v-card-actions>
+                        <v-spacer></v-spacer>
+                        <v-divider></v-divider>
+                        <v-spacer></v-spacer>
+                        <v-btn flat text class="blue" @click="requeueOne"><v-icon left>cached</v-icon>Requeue</v-btn>
+                    </v-card-actions>
+                  </div>
+                  <div v-if="selectedMessageLog.status === 'PUBLISHED'">
+                    <v-card-actions>
+                        <v-spacer></v-spacer>
+                        <v-divider></v-divider>
+                        <v-spacer></v-spacer>
+                        <v-btn flat text class="blue" @click="requeueOne"><v-icon left>cached</v-icon>Requeue</v-btn>
+                    </v-card-actions>
+                  </div>
               </v-card>
 
           </v-dialog>

@@ -115,7 +115,7 @@ class MessageLog(models.Model):
     class Meta:
         ordering = (
             '-failure_time', '-completion_time', 'status', '-priority', 
-            '-publish_time',
+            'publish_time',
         )
 
 

@@ -98,8 +98,10 @@ class ScheduledTaskThread(threading.Thread):
                     print(f'Thread queue: {self.queue} waiting for interval: {interval} vs current {count}')
                     if not self.active:
                         if self.inactive_reason:
-                            print('Thread stop has been requested because of the following reason: %s.\n Stopping the '
-                                'thread' % self.inactive_reason)
+                            print(
+                                "Thread stop has been requested because of the following"
+                                f"reason: {self.inactive_reason}.\n Stopping the thread"
+                            )
                         return
 
                     try:

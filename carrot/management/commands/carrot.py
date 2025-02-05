@@ -242,6 +242,7 @@ class Command(BaseCommand):
                         )
                         thread.alert_dead_thread = True  # Alert thread is dead
                         # TODO: Look at adding consumer set back
+                        # TODO: Add checks/alerts for scheduler threads
 
                 if not self.run:
                     self.terminate()

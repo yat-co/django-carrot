@@ -20,6 +20,9 @@ import pika
 import time
 from typing import Optional, Type, List, Dict, Any, Callable, Union, Tuple
 
+import pika.channel
+from pika.adapters.blocking_connection import BlockingChannel
+
 
 LOGGING_FORMAT = '%(threadName)-10s %(asctime)-10s %(levelname)s:: %(message)s'
 
@@ -46,6 +49,7 @@ class Consumer(threading.Thread):
                  logger: logging.Logger,
                  name: str,
                  worker: Optional[str] = None,
+                 priority: Optional[int] = None,
                  durable: bool = True,
                  queue_arguments: dict = None,
                  exchange_arguments: dict = None):
@@ -71,9 +75,9 @@ class Consumer(threading.Thread):
         self.logger = logger
         self.queue = queue
         self.exchange = queue
-
+        self.priority: Optional[int] = priority
         self.connection: pika.SelectConnection = None
-        self.channel: pika.channel = None
+        self.channel: Optional[BlockingChannel] = None
         self.shutdown_requested = False
         self.alert_dead_thread: bool = False # Alert on dead thread
         self._consumer_tag = None
@@ -229,7 +233,7 @@ class Consumer(threading.Thread):
         All arguments sent to this callback come from Pika but are not required by Carrot
         """
 
-        self.channel = None
+        self.channel: Optional[BlockingChannel] = None
         if self.shutdown_requested:
             self.logger.warning('Connection closed')
             self.connection.ioloop.stop()
@@ -254,7 +258,7 @@ class Consumer(threading.Thread):
         establishes the exchange
         """
         self.logger.info('Channel opened')
-        self.channel = channel
+        self.channel: Optional[BlockingChannel] = channel
         self.channel.add_on_close_callback(self.on_channel_closed)
         self.channel.exchange_declare(self.on_exchange_declare, self.exchange, **self.exchange_arguments)
 
@@ -310,7 +314,13 @@ class Consumer(threading.Thread):
         )
         self.channel.add_on_cancel_callback(self.on_consumer_cancelled)
         self.channel.basic_qos(prefetch_count=1)
-        self._consumer_tag = self.channel.basic_consume(self.on_message, self.queue)
+        arguments = None
+        if self.priority is not None:
+            arguments = {"x-priority": self.priority}
+
+        self._consumer_tag = self.channel.basic_consume(
+            consumer_callback=self.on_message, queue=self.queue, arguments=arguments
+        )
 
     def on_consumer_cancelled(self, method_frame: pika.frame.Method) -> None:
         """
@@ -560,7 +570,7 @@ class ConsumerSet(object):
         self.logger = logger
         self.host = host
         self.connection = host.blocking_connection
-        self.channel = self.connection.channel()
+        self.channel: Optional[pika.channel.Channel] = self.connection.channel()
         self.queue = queue
 
         self.concurrency = concurrency
@@ -614,6 +624,7 @@ class ConsumerSet(object):
                 queue=self.queue,
                 logger=self.logger,
                 name=f"{self.name}-{str(i + 1)}",
+                priority=(5-i),
                 worker=self.worker,
                 durable=self.durable,
                 queue_arguments=self.queue_arguments,
