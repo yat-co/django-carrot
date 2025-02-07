@@ -1,11 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator
-
-# support for both django 1.x/2.x
-try:
-    from django.core.urlresolvers import reverse
-except ImportError:
-    from django.urls import reverse
+from django.urls import reverse
+from django.utils.translation import gettext_lazy as _
 
 from carrot.exceptions import CarrotConfigException
 
@@ -48,9 +44,13 @@ class MessageLog(models.Model):
     exchange = models.CharField(max_length=200, blank=True, null=True)  #: the exchange
     queue = models.CharField(max_length=200, blank=True, null=True)
     routing_key = models.CharField(max_length=200, blank=True, null=True)
-    uuid = models.CharField(max_length=200)
+    uuid = models.CharField(max_length=200, db_index=True)
     priority = models.PositiveIntegerField(default=0)
     validate = models.BooleanField(default=True)
+    worker = models.CharField(
+        max_length=100, default=None, null=True, verbose_name=_("Worker"),
+        help_text=_("Worker that executes the task")
+    )
 
     task = models.CharField(max_length=200)  #: the import path for the task to be executed
     task_args = models.TextField(null=True, blank=True, verbose_name='Task positional arguments')
@@ -114,7 +114,10 @@ class MessageLog(models.Model):
 
     class Meta:
         app_label = "carrot"
-        ordering = '-failure_time', '-completion_time', 'status', '-priority', '-publish_time',
+        ordering = (
+            '-failure_time', '-completion_time', 'status', '-priority', 
+            'publish_time',
+        )
 
 
 class ScheduledTask(models.Model):
@@ -194,6 +197,9 @@ class ScheduledTask(models.Model):
         return publish_message(self.task, *self.positional_arguments, priority=priority, queue=self.queue,
                                exchange=self.exchange or '', routing_key=self.routing_key or self.queue,
                                validate=self.validate, **kwargs)
+
+    class Meta:
+        ordering = ('-task', '-pk',)
 
     def __str__(self) -> models.CharField:
         return self.task
