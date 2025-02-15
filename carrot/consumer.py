@@ -20,6 +20,9 @@ import pika
 import time
 from typing import Optional, Type, List, Dict, Any, Callable, Union, Tuple
 
+import pika.channel
+from pika.adapters.blocking_connection import BlockingChannel
+
 
 LOGGING_FORMAT = '%(threadName)-10s %(asctime)-10s %(levelname)s:: %(message)s'
 
@@ -40,8 +43,16 @@ class Consumer(threading.Thread):
     remaining_save_attempts: int = 10
     get_message_attempts: int = 50
 
-    def __init__(self, host: VirtualHost, queue: str, logger: logging.Logger, name: str, durable: bool = True,
-                 queue_arguments: dict = None, exchange_arguments: dict = None):
+    def __init__(self, 
+                 host: VirtualHost,
+                 queue: str,
+                 logger: logging.Logger,
+                 name: str,
+                 worker: Optional[str] = None,
+                 priority: Optional[int] = None,
+                 durable: bool = True,
+                 queue_arguments: dict = None,
+                 exchange_arguments: dict = None):
         """
         :param host: the host the queue to consume from is attached to
         :type host: :class:`carrot.objects.VirtualHost`
@@ -59,20 +70,26 @@ class Consumer(threading.Thread):
             exchange_arguments = {}
 
         self.failure_callbacks: List[Callable] = []
-        self.name = name
+        self.name: str = name
+        self.worker: Optional[str] = worker
         self.logger = logger
         self.queue = queue
         self.exchange = queue
-
+        self.priority: Optional[int] = priority
         self.connection: pika.SelectConnection = None
-        self.channel: pika.channel = None
+        self.channel: Optional[BlockingChannel] = None
         self.shutdown_requested = False
+        self.alert_dead_thread: bool = False # Alert on dead thread
         self._consumer_tag = None
         self._url = str(host)
 
         self.queue_arguments = queue_arguments
         self.exchange_arguments = exchange_arguments
         self.durable = durable
+
+    @property
+    def worker_display(self) -> str:
+        return self.worker or ""
 
     def add_failure_callback(self, cb: Callable) -> None:
         """
@@ -216,7 +233,7 @@ class Consumer(threading.Thread):
         All arguments sent to this callback come from Pika but are not required by Carrot
         """
 
-        self.channel = None
+        self.channel: Optional[BlockingChannel] = None
         if self.shutdown_requested:
             self.logger.warning('Connection closed')
             self.connection.ioloop.stop()
@@ -241,7 +258,7 @@ class Consumer(threading.Thread):
         establishes the exchange
         """
         self.logger.info('Channel opened')
-        self.channel = channel
+        self.channel: Optional[BlockingChannel] = channel
         self.channel.add_on_close_callback(self.on_channel_closed)
         self.channel.exchange_declare(self.on_exchange_declare, self.exchange, **self.exchange_arguments)
 
@@ -292,17 +309,27 @@ class Consumer(threading.Thread):
 
         This method sets a channel prefetch count of zero to prevent dropouts
         """
-        self.logger.info('Starting consumer %s' % self.name)
+        self.logger.info(
+            f"Starting consumer=`{self.name}` on worker=`{self.worker_display}`"
+        )
         self.channel.add_on_cancel_callback(self.on_consumer_cancelled)
         self.channel.basic_qos(prefetch_count=1)
-        self._consumer_tag = self.channel.basic_consume(self.on_message, self.queue)
+        arguments = None
+        if self.priority is not None:
+            arguments = {"x-priority": self.priority}
+
+        self._consumer_tag = self.channel.basic_consume(
+            consumer_callback=self.on_message, queue=self.queue, arguments=arguments
+        )
 
     def on_consumer_cancelled(self, method_frame: pika.frame.Method) -> None:
         """
         Invoked by pika when RabbitMQ sends a Basic.Cancel for a consumer receiving messages.
 
         """
-        self.logger.warning('Consumer was cancelled remotely, shutting down: %r', method_frame)
+        self.logger.warning(
+            f"Consumer was cancelled remotely, shutting down: {method_frame}"
+        )
         if self.channel:
             self.channel.close()
 
@@ -314,9 +341,11 @@ class Consumer(threading.Thread):
 
         """
         self.channel.basic_ack(method_frame.delivery_tag)
+        log: MessageLog
         log, failure_reason, acknowledged = self.__get_message_log(properties, body)
         if log:
             self.active_message_log = log
+            log.worker = self.worker
             log.status = "IN_PROGRESS"
             log.save()
         else:
@@ -335,7 +364,9 @@ class Consumer(threading.Thread):
             return self.fail(log, 'Unable to identify the task type because a key was not found in the message header: %s' %
                       err)
 
-        self.logger.info('Consuming task %s, ID=%s' % (task_type, properties.message_id))
+        self.logger.info(
+            f"[worker={self.worker_display}] Consuming task {task_type}, ID={properties.message_id}"
+        )
 
         try:
             func = func = self.serializer.get_task(properties, body)
@@ -348,10 +379,12 @@ class Consumer(threading.Thread):
         except Exception as err:
             return self.fail(log, 'Unable to process the message due to an error collecting the task arguments: %s' % err)
 
-        start_msg = '{} {} INFO:: Starting task {}.{}'.format(self.name,
-                                                              timezone.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
-                                                              func.__module__, func.__name__)
-        self.logger.info(start_msg)
+        base_msg: str = f"[worker={self.worker_display}] Starting task {func.__module__}.{func.__name__}"
+        start_msg = '{} {} INFO:: {}'.format(
+            self.name, timezone.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
+            base_msg
+        )
+        self.logger.info(base_msg)
         self.task_log = [start_msg]
         task = LoggingTask(func, self.logger, self.name, *args, **kwargs)
 
@@ -363,12 +396,14 @@ class Consumer(threading.Thread):
                 self.task_log.append(task_logs)
                 self.logger.info(task_logs)
 
-            success = '{} {} INFO:: Task {} completed successfully with response {}'.format(self.name,
-                                                                                            timezone.now().strftime(
-                                                                                                    "%Y-%m-%d %H:%M:%S,%f")[
-                                                                                            :-3],
-                                                                                            log.task, output)
-            self.logger.info(success)
+            base_msg: str = f"[worker={self.worker_display}] Task {log.task} completed successfully with response {output}"
+            success = '{} {} INFO:: {}'.format(
+                self.name, 
+                timezone.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
+                base_msg
+            )
+
+            self.logger.info(base_msg)
             self.task_log.append(success)
 
             log.status = 'COMPLETED'
@@ -524,17 +559,23 @@ class ConsumerSet(object):
         mod = importlib.import_module(module)
         return getattr(mod, _cls)
 
-    def __init__(self, host: VirtualHost, queue: str, logger: logging.Logger, concurrency: int = 1,
+    def __init__(self,
+                 host: VirtualHost,
+                 queue: str,
+                 logger: logging.Logger,
+                 concurrency: int = 1,
                  name: str = 'consumer',
+                 worker: Optional[str] = None,
                  consumer_class: str = 'carrot.consumer.Consumer'):
         self.logger = logger
         self.host = host
         self.connection = host.blocking_connection
-        self.channel = self.connection.channel()
+        self.channel: Optional[pika.channel.Channel] = self.connection.channel()
         self.queue = queue
 
         self.concurrency = concurrency
-        self.name = '%s-%s' % (self.queue, name)
+        self.name = f"{self.queue}-{name}"
+        self.worker: Optional[str] = worker
         self.consumer_class = self.get_consumer_class(consumer_class)
         self.threads: List[Consumer] = []
 
@@ -578,9 +619,16 @@ class ConsumerSet(object):
         A :class:`.Consumer` is attached to each thread and is started
         """
         for i in range(0, self.concurrency):
-            consumer = self.consumer_class(host=self.host, queue=self.queue, logger=self.logger,
-                                           name='%s-%i' % (self.name, i + 1),
-                                           durable=self.durable, queue_arguments=self.queue_arguments,
-                                           exchange_arguments=self.exchange_arguments)
+            consumer = self.consumer_class(
+                host=self.host,
+                queue=self.queue,
+                logger=self.logger,
+                name=f"{self.name}-{str(i + 1)}",
+                priority=(5-i),
+                worker=self.worker,
+                durable=self.durable,
+                queue_arguments=self.queue_arguments,
+                exchange_arguments=self.exchange_arguments
+            )
             self.threads.append(consumer)
             consumer.start()

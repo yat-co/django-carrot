@@ -12,11 +12,12 @@ from django.db.models import QuerySet
 
 
 class MessageLogSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = MessageLog
         fields = [
             'status', 'exchange', 'queue', 'routing_key', 'uuid', 'priority', 'task',
-            'task_args', 'content', 'validate', 'exception', 'traceback', 'output',
+            'task_args', 'content', 'validate', "worker", 'exception', 'traceback', 'output',
             'publish_time', 'failure_time', 'completion_time', 'log', 'id',
             'virtual_host'
         ]
@@ -39,12 +40,15 @@ class MessageLogViewset(viewsets.ModelViewSet):
         search_term = self.request.query_params.get('search', None)
         qs = self.queryset.all()
         if search_term:
-            if settings.DATABASES.get('default', {}).get('ENGINE') == 'django.db.backends.postgresql_psycopg2':
-                qs = qs.annotate(search=SearchVector('task', 'content', 'task_args')).filter(search=search_term)
+            if settings.DATABASES.get("default", {}).get("ENGINE") == "django.db.backends.postgresql_psycopg2":
+                qs = qs.annotate(
+                    search=SearchVector("task", "worker", "content", "task_args")
+                ).filter(search=search_term)
             else:
                 qs = (
                     qs.filter(task__icontains=search_term) |
                     qs.filter(content__icontains=search_term) |
+                    qs.filter(worker__icontains=search_term) |
                     qs.filter(task_args__icontains=search_term)
                 ).distinct()
 

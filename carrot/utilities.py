@@ -5,17 +5,19 @@ consume
 Most users should use the functions defined in this module, rather than attempting to subclass the base level objects
 
 """
+from django.conf import settings
+from django.db.utils import IntegrityError
+from django.utils.decorators import method_decorator
+
+from carrot.objects import VirtualHost, Message
+from carrot.models import ScheduledTask, MessageLog
+from carrot import DEFAULT_BROKER
+from carrot.exceptions import CarrotConfigException
+
 from datetime import datetime
 import json
 import importlib
-from django.conf import settings
-from carrot.objects import VirtualHost, Message
-from carrot.models import ScheduledTask, MessageLog
-from django.utils.decorators import method_decorator
-from carrot import DEFAULT_BROKER
-from carrot.exceptions import CarrotConfigException
-from django.db.utils import IntegrityError
-from typing import Dict, List, Union, Callable, Type, Any
+from typing import Dict, List, Optional, Union, Callable, Type, Any
 
 
 def get_host_from_name(name: str) -> VirtualHost:
@@ -108,8 +110,7 @@ def create_message(task: Union[str, Callable],
                    exchange: str = '',
                    routing_key: str = None,
                    validate: bool = True,
-                   task_kwargs: dict = None
-                   ) -> Message:
+                   task_kwargs: dict = None) -> Message:
     """
     Creates a :class:`carrot.objects.Message` object without publishing it
 
@@ -123,8 +124,11 @@ def create_message(task: Union[str, Callable],
         task = validate_task(task)
 
     vhost = get_host_from_name(queue)
-    msg = Message(virtual_host=vhost, queue=queue, routing_key=routing_key, exchange=exchange, task=task,
-                  priority=priority, validate=validate, task_args=task_args, task_kwargs=task_kwargs)
+    msg = Message(
+        virtual_host=vhost, queue=queue, routing_key=routing_key, exchange=exchange, 
+        task=task, priority=priority, validate=validate, task_args=task_args, 
+        task_kwargs=task_kwargs
+    )
 
     return msg
 
@@ -144,7 +148,9 @@ def publish_message(task: Union[str, Callable],
     """
     if not queue:
         queue = 'default'
-    msg = create_message(task, queue, priority, task_args, exchange, routing_key, validate, task_kwargs)
+    msg = create_message(
+        task, queue, priority, task_args, exchange, routing_key, validate, task_kwargs
+    )
     return msg.publish()
 
 

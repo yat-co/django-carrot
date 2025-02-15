@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-carrot"
-version = "1.9.0"
+version = "1.10.2"
 description = "A RabbitMQ asynchronous task queue for Django."
 authors = ["Christoper Davies <christopherdavies553@gmail.com>"]
 license = "Apache-2.0"
@@ -11,10 +11,7 @@ classifiers = [
     'Environment :: Web Environment',
     'Development Status :: 5 - Production/Stable',
     'Framework :: Django',
-    'Framework :: Django :: 1.9',
-    'Framework :: Django :: 1.10',
-    'Framework :: Django :: 1.11',
-    'Framework :: Django :: 2.0',
+    'Framework :: Django :: 2.2',
     'Intended Audience :: Developers',
     'License :: OSI Approved :: Apache Software License',
     'Operating System :: OS Independent',

@@ -9,6 +9,9 @@
     <link href='https://fonts.googleapis.com/css?family=Roboto:300,400,500,700|Material+Icons' rel="stylesheet" type="text/css">
     <link href="{% static 'carrot/vuetify.min.css' %}" rel="stylesheet" type="text/css">
     <!--<link rel="icon" type="image/png" href="favicon-32x32.png" sizes="32x32">-->
+    <style>
+      .text-center {text-align: center}
+    </style
 </head>
 <body>
   <div id="app">
@@ -72,6 +75,10 @@
                       <v-list-tile>
                           <v-list-tile-content>Priority</v-list-tile-content>
                           <v-list-tile-content class="align-end">[{ selectedMessageLog.priority }]</v-list-tile-content>
+                      </v-list-tile>
+                      <v-list-tile>
+                          <v-list-tile-content>Worker</v-list-tile-content>
+                          <v-list-tile-content class="align-end">[{ selectedMessageLog.worker }]</v-list-tile-content>
                       </v-list-tile>
                       <v-list-tile>
                           <v-list-tile-content>Publish time</v-list-tile-content>
@@ -142,6 +149,22 @@
                       <v-btn flat text class="error" @click="deleteOne"><v-icon left>close</v-icon>Delete</v-btn>
                       <v-btn flat text class="blue" @click="requeueOne"><v-icon left>cached</v-icon>Requeue</v-btn>
                   </v-card-actions>
+                  <div v-if="selectedMessageLog.status === 'IN_PROGRESS'">
+                    <v-divider></v-divider>
+                    <v-spacer></v-spacer>
+                    <v-card-actions>
+                      <v-spacer></v-spacer>
+                      <v-btn flat text class="blue" @click="requeueOne"><v-icon left>cached</v-icon>Requeue</v-btn>
+                    </v-card-actions>
+                  </div>
+                  <div v-if="selectedMessageLog.status === 'PUBLISHED'">
+                    <v-divider></v-divider>
+                    <v-spacer></v-spacer>
+                    <v-card-actions>
+                      <v-spacer></v-spacer>
+                        <v-btn flat text class="blue" @click="requeueOne"><v-icon left>cached</v-icon>Requeue</v-btn>
+                    </v-card-actions>
+                  </div>
               </v-card>
 
           </v-dialog>
@@ -185,6 +208,16 @@
                               </v-select>
                           </v-flex>
 
+                          <v-flex xs6>
+                              <v-text-field
+                                      multi-line
+                                      value="worker"
+                                      label="Worker"
+                                      @change="revalidate"
+                                      :error-messages="positionalErrors"
+                                      v-model="selectedScheduledTask.worker"
+                              ></v-text-field>
+                          </v-flex>
                           <v-flex xs6>
                               <v-text-field
                                       multi-line
@@ -295,21 +328,27 @@
                 >
                   <template slot="items" slot-scope="props" >
                       <tr v-if="tabs === 'tab-published'" @click.stop="selectedMessageLog = props.item">
-                        <td>[{ props.item.priority }]</td>
+                        <td class="text-center">[{ props.item.status }]</td>
+                        <td class="text-center">[{ props.item.queue }]</td>
+                        <td class="text-center">[{ props.item.priority }]</td>
                         <td>[{ props.item.task }]</td>
+                        <td class="text-center">[{ props.item.worker }]</td>
                         <td>[{ props.item.task_args }]</td>
                         <td>[{ props.item.content }]</td>
                       </tr>
                       <tr v-else-if="tabs === 'tab-failed'" @click.stop="selectedMessageLog = props.item">
                         <td>[{ props.item.failure_time | displayTime }]</td>
                         <td>[{ props.item.task }]</td>
+                        <td>[{ props.item.worker }]</td>
                         <td>[{ props.item.task_args }]</td>
                         <td>[{ props.item.content }]</td>
                         <td>[{ props.item.exception }]</td>
                       </tr>
                       <tr v-else-if="tabs === 'tab-completed'" @click.stop="selectedMessageLog = props.item">
                         <td>[{ props.item.completion_time | displayTime }]</td>
+                        <td class="text-center">[{ props.item.queue }]</td>
                         <td>[{ props.item.task }]</td>
+                        <td class="text-center">[{ props.item.worker }]</td>
                         <td>[{ props.item.task_args }]</td>
                         <td>[{ props.item.content | cropped }]</td>
                       </tr>
@@ -770,7 +809,17 @@
         getHeaders () {
           if (this.tabs === 'tab-published') {
             return [
-              {
+            {
+                text: 'Status',
+                value: 'status',
+                align: 'center',
+                sortable: true,
+              }, {
+                text: 'Queue',
+                value: 'queue',
+                align: 'center',
+                sortable: true,
+              }, {
                 text: 'Priority',
                 value: 'priority',
                 align: 'left',
@@ -778,6 +827,10 @@
               }, {
                 text: 'Task',
                 value: 'task',
+                align: 'left',
+              }, {
+                text: 'Worker',
+                value: 'worker',
                 align: 'left',
               }, {
                 text: 'Arguments',
@@ -800,6 +853,10 @@
                 value: 'task',
                 align: 'left',
               }, {
+                text: 'Worker',
+                value: 'worker',
+                align: 'left',
+              }, {
                 text: 'Arguments',
                 value: 'task_args',
                 align: 'left',
@@ -820,8 +877,17 @@
                 value: 'completion_time',
                 align: 'left',
               }, {
+                text: 'Queue',
+                value: 'queue',
+                align: 'center',
+                sortable: true,
+              }, {
                 text: 'Task',
                 value: 'task',
+                align: 'left',
+              }, {
+                text: 'Worker',
+                value: 'worker',
                 align: 'left',
               }, {
                 text: 'Arguments',

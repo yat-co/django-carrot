@@ -85,6 +85,9 @@ class Command(BaseCommand):
         parser.add_argument(
             '--excl_queues', type=str, required=False, help='Comma seperated Queues to Exclude for Consumers'
         )
+        parser.add_argument(
+            '--worker', type=str, required=False, help='Node Worker Name (Optional)'
+        )
         parser.add_argument('--testmode', dest='testmode', action='store_true', default=False,
                             help='Run in test mode. Prevents the command from running as a service. Should only be '
                                  'used when running Carrot\'s tests')
@@ -128,8 +131,27 @@ class Command(BaseCommand):
             '--loglevel', self.options['loglevel']
         ]
 
+        # Scheduler
         if not self.options['run_scheduler']:
             options.append('--no-scheduler')
+
+        # Get Include or Exclude Queues Parameters
+        incl_queues_str: Optional[str] = self.options["incl_queues"]
+        excl_queues_str: Optional[str] = self.options["excl_queues"]
+        assert (
+            incl_queues_str is None or excl_queues_str is None
+        ), "Can not provide `incl_queues` and `excl_queues`, provide either or neither"
+
+        if incl_queues_str is not None:
+            options.append(f"--incl_queues={incl_queues_str}")
+
+        elif excl_queues_str is not None:
+            options.append(f"--excl_queues={excl_queues_str}")
+
+        # Get Worker and Ensure Worker Provided in the Event of Splitting up Consumers
+        worker: Optional[str] = self.options["worker"]
+        if worker is not None:
+            options.append(f"--worker={worker}")
 
         if self.options['consumer_class'] != 'carrot.objects.Consumer':
             options.append('--consumer-class')
@@ -177,7 +199,9 @@ class Command(BaseCommand):
 
             self.stdout.write('Attempting to start the process')
             self.start(**options)
-            self.stdout.write(self.style.SUCCESS('Process restarted successfully'))
+            self.stdout.write(
+                self.style.SUCCESS(f'Process restarted successfully pid={self.pid}')
+            )
 
         elif mode == 'status':
             if self.pid:
