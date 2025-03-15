@@ -89,7 +89,7 @@ class Consumer(threading.Thread):
 
     @property
     def worker_display(self) -> str:
-        return self.worker or ""
+        return self.worker or "default"
 
     def add_failure_callback(self, cb: Callable) -> None:
         """
@@ -116,7 +116,8 @@ class Consumer(threading.Thread):
         if log.pk:
             if self.task_log:
                 log.log = '\n'.join(self.task_log)
-
+            
+            # TODO: Add Retry here for `django.db.utils.InterfaceError: connection already closed`
             log.status = 'FAILED'
             log.failure_time = timezone.now()
             log.exception = err
@@ -575,7 +576,7 @@ class ConsumerSet(object):
 
         self.concurrency = concurrency
         self.name = f"{self.queue}-{name}"
-        self.worker: Optional[str] = worker
+        self.worker: str = worker or "default"
         self.consumer_class = self.get_consumer_class(consumer_class)
         self.threads: List[Consumer] = []
 

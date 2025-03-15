@@ -1,4 +1,4 @@
-from django.conf.urls import url
+from django.urls import re_path
 from carrot.views import MessageList
 from carrot.utilities import decorate_class_view, decorate_function_view, create_class_view
 from django.conf import settings
@@ -30,16 +30,16 @@ def _f(v: MessageLogViewset) -> Any:
 
 
 urlpatterns = [
-    url(r'^$', _(MessageList), name='carrot-monitor'),
-    url(r'^api/message-logs/published/$', _f(published_message_log_viewset), name='published-messagelog'),
-    url(r'^api/message-logs/failed/$', _f(failed_message_log_viewset)),
-    url(r'^api/message-logs/purge/$', _f(purge_messages)),
-    url(r'^api/message-logs/requeue/$', _f(requeue_pending)),
-    url(r'^api/message-logs/completed/$', _f(completed_message_log_viewset)),
-    url(r'^api/message-logs/(?P<pk>[0-9]+)/$', _f(detail_message_log_viewset)),
-    url(r'^api/scheduled-tasks/$', _f(scheduled_task_viewset)),
-    url(r'^api/scheduled-tasks/task-choices/$', _f(task_list)),
-    url(r'^api/scheduled-tasks/validate-args/$', _f(validate_args)),
-    url(r'^api/scheduled-tasks/(?P<pk>[0-9]+)/$', _f(scheduled_task_detail)),
-    url(r'^api/scheduled-tasks/(?P<pk>[0-9]+)/run/$', _f(run_scheduled_task)),
+    re_path(r'^$', _(MessageList), name='carrot-monitor'),
+    re_path(r'^api/message-logs/published/$', _f(published_message_log_viewset), name='published-messagelog'),
+    re_path(r'^api/message-logs/failed/$', _f(failed_message_log_viewset)),
+    re_path(r'^api/message-logs/purge/$', _f(purge_messages)),
+    re_path(r'^api/message-logs/requeue/$', _f(requeue_pending)),
+    re_path(r'^api/message-logs/completed/$', _f(completed_message_log_viewset)),
+    re_path(r'^api/message-logs/(?P<pk>[0-9]+)/$', _f(detail_message_log_viewset)),
+    re_path(r'^api/scheduled-tasks/$', _f(scheduled_task_viewset)),
+    re_path(r'^api/scheduled-tasks/task-choices/$', _f(task_list)),
+    re_path(r'^api/scheduled-tasks/validate-args/$', _f(validate_args)),
+    re_path(r'^api/scheduled-tasks/(?P<pk>[0-9]+)/$', _f(scheduled_task_detail)),
+    re_path(r'^api/scheduled-tasks/(?P<pk>[0-9]+)/run/$', _f(run_scheduled_task)),
 ]

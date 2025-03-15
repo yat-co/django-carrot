@@ -39,7 +39,7 @@ class MessageLog(models.Model):
         ('FAILED', 'Failed'),
         ('COMPLETED', 'Completed'),
     ) #:
-
+    id = models.BigAutoField(primary_key=True)  # Use BigAutoField for the primary key
     status = models.CharField(max_length=11, choices=STATUS_CHOICES, default='PUBLISHED')
     exchange = models.CharField(max_length=200, blank=True, null=True)  #: the exchange
     queue = models.CharField(max_length=200, blank=True, null=True)
@@ -113,6 +113,7 @@ class MessageLog(models.Model):
         return msg
 
     class Meta:
+        app_label = "carrot"
         ordering = (
             '-failure_time', '-completion_time', 'status', '-priority', 
             'publish_time',
@@ -147,6 +148,9 @@ class ScheduledTask(models.Model):
 
     task_name = models.CharField(max_length=200, unique=True)
 
+    class Meta:
+        app_label = "carrot"
+        
     def get_absolute_url(self) -> str:
         return reverse('edit-scheduled-task', args=[self.pk])
 
