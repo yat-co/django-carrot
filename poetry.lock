@@ -47,14 +47,6 @@ optional = false
 python-versions = "*"
 version = "4.0.3"
 
-[[package]]
-category = "main"
-description = "A high-level Python Web framework that encourages rapid development and clean, pragmatic design."
-name = "django"
-optional = false
-python-versions = ">=3.5"
-version = "5.1.5"
-
 [package.dependencies]
 pytz = "*"
 

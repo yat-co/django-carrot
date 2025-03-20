@@ -1,10 +1,10 @@
 [tool.poetry]
 name = "django-carrot"
-version = "2.0.2"
+version = "2.0.3"
 description = "A RabbitMQ asynchronous task queue for Django."
-authors = ["Christoper Davies <christopherdavies553@gmail.com>"]
+authors = []
 license = "Apache-2.0"
-repository = "https://github.com/chris104957/django-carrot"
+repository = "https://github.com/yat-co/django-carrot"
 homepage = "https://django-carrot.readthedocs.io"
 readme = "README.rst"
 classifiers = [
@@ -33,7 +33,6 @@ python = "^3.6.3"
 djangorestframework = "^3.9"
 pika = "^0.13.1"
 json2html = "^1.2"
-django = "^2.0.0"
 psutil = "^5.6"
 
 [tool.poetry.dev-dependencies]
