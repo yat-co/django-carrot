@@ -1,5 +1,5 @@
 from django.db import models
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
@@ -143,6 +143,10 @@ class ScheduledTask(models.Model):
     task_args = models.TextField(null=True, blank=True, verbose_name='Positional arguments')
     content = models.TextField(null=True, blank=True, verbose_name='Keyword arguments')
     validate = models.BooleanField(default=True)
+    priority = models.IntegerField(
+        null=True, blank=True, validators=[MinValueValidator(0), MaxValueValidator(255)],
+        help_text="1 to 5 suggested, up to 255"
+    )
 
     active = models.BooleanField(default=True)
 
@@ -194,9 +198,13 @@ class ScheduledTask(models.Model):
         kwargs = json.loads(self.content or '{}')
         if isinstance(kwargs, str):
             kwargs = {}
-        return publish_message(self.task, *self.positional_arguments, priority=priority, queue=self.queue,
-                               exchange=self.exchange or '', routing_key=self.routing_key or self.queue,
-                               validate=self.validate, **kwargs)
+
+        return publish_message(
+            self.task, *self.positional_arguments, priority=self.priority or priority,
+            queue=self.queue, exchange=self.exchange or '',
+            routing_key=self.routing_key or self.queue, validate=self.validate,
+            **kwargs
+        )
 
     class Meta:
         ordering = ('-task', '-pk',)

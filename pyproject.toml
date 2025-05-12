@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-carrot"
-version = "2.0.3"
+version = "2.0.4"
 description = "A RabbitMQ asynchronous task queue for Django."
 authors = []
 license = "Apache-2.0"

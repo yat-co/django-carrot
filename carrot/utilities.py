@@ -160,6 +160,7 @@ def create_scheduled_task(task: Union[str, Callable],
                           task_name: str = None,
                           queue: str = None,
                           validate: bool = True,
+                          priority: Optional[int] = None,
                           **kwargs) -> ScheduledTask:
     """
     Helper function for creating a :class:`carrot.models.ScheduledTask`
@@ -192,7 +193,8 @@ def create_scheduled_task(task: Union[str, Callable],
                 routing_key=queue,
                 task=task,
                 content=json.dumps(kwargs or '{}'),
-                validate=validate
+                validate=validate,
+                priority=priority
         )
     except IntegrityError:
         raise IntegrityError('A ScheduledTask with this task_name already exists. Please specific a unique name using '
