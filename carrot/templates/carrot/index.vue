@@ -355,6 +355,7 @@
                       <tr v-else @click="selectedScheduledTask = props.item">
                           <td>[{ props.item.task_name }]</td>
                           <td>[{ props.item.task }]</td>
+                          <td>[{ props.item.priority }]</td>
                           <td>Every [{ props.item.interval_count }] [{ props.item.interval_type }]</td>
                           <td><v-icon v-if="props.item.active">check</v-icon><v-icon v-else>close</v-icon></td>
                       </tr>
@@ -909,6 +910,11 @@
                 text: 'Task',
                 value: 'task',
                 align: 'left',
+              }, , {
+                text: 'Priority',
+                value: 'priority',
+                align: 'left',
+                sortable: false,
               }, {
                 text: 'Interval',
                 value: 'interval',
