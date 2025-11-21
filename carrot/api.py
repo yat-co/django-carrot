@@ -1,14 +1,18 @@
+from django.conf import settings
+from django.contrib.postgres.search import SearchVector
+from django.db.models import QuerySet
+
+from rest_framework import viewsets, serializers, pagination, response
+from rest_framework.request import Request
+
 import json
 import ast
 import importlib
 from inspect import getmembers, isfunction
-from django.conf import settings
-from rest_framework import viewsets, serializers, pagination, response
-from rest_framework.request import Request
+
 from carrot.models import MessageLog, ScheduledTask
 from carrot.utilities import purge_queue, requeue_all
-from django.contrib.postgres.search import SearchVector
-from django.db.models import QuerySet
+from carrot import options
 
 
 class MessageLogSerializer(serializers.ModelSerializer):
@@ -60,7 +64,7 @@ class PublishedMessageLogViewSet(MessageLogViewset):
     Returns a list of Published `MessageLog` objects
     """
 
-    queryset = MessageLog.objects.filter(status__in=['PUBLISHED', 'IN_PROGRESS'], id__isnull=False)
+    queryset = MessageLog.objects.filter(status__in=[options.MessageStatusPublished, options.MessageStatusInProgress], id__isnull=False)
 
     def purge(self, request: Request, *args, **kwargs) -> response.Response:
         """
@@ -87,7 +91,7 @@ class FailedMessageLogViewSet(MessageLogViewset):
     Returns a list of failed `MessageLog` objects
     """
 
-    queryset = MessageLog.objects.filter(status='FAILED', id__isnull=False)
+    queryset = MessageLog.objects.filter(status=options.MessageStatusFailed, id__isnull=False)
 
     def destroy(self, request: Request, *args, **kwargs) -> response.Response:
         """
@@ -114,7 +118,7 @@ class CompletedMessageLogViewSet(MessageLogViewset):
     """
     Returns a list of Completed `MessageLog` objects
     """
-    queryset = MessageLog.objects.filter(status='COMPLETED', id__isnull=False)
+    queryset = MessageLog.objects.filter(status=options.MessageStatusCompleted, id__isnull=False)
 
 
 completed_message_log_viewset = CompletedMessageLogViewSet.as_view({'get': 'list'})

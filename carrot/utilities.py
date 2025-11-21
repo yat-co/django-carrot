@@ -13,6 +13,7 @@ from carrot.objects import VirtualHost, Message
 from carrot.models import ScheduledTask, MessageLog
 from carrot import DEFAULT_BROKER
 from carrot.exceptions import CarrotConfigException
+from carrot import options
 
 from datetime import datetime
 import json
@@ -283,7 +284,9 @@ def purge_queue() -> None:
     Deletes all MessageLog objects with status `IN_PROGRESS` or `PUBLISHED` add iterate through and purge all RabbitMQ
     queues
     """
-    queued_messages = MessageLog.objects.filter(status__in=['IN_PROGRESS', 'PUBLISHED'])
+    queued_messages = MessageLog.objects.filter(
+        status__in=[options.MessageStatusInProgress, options.MessageStatusPublished]
+    )
     queued_messages.delete()
 
     try:
@@ -308,7 +311,9 @@ def requeue_all() -> None:
     """
     Requeues all pending MessageLogs
     """
-    logs = MessageLog.objects.filter(status__in=['IN_PROGRESS', 'PUBLISHED'])
+    logs = MessageLog.objects.filter(
+        status__in=[options.MessageStatusInProgress, options.MessageStatusPublished]
+    )
 
     for log in logs:
         log.requeue()
