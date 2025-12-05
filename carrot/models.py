@@ -4,6 +4,7 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from carrot.exceptions import CarrotConfigException
+from carrot import options
 
 from datetime import datetime, timedelta
 import json
@@ -33,14 +34,12 @@ class MessageLog(models.Model):
            the :function:`carrot.helper_tasks.cleanup` has not been disabled
 
     """
-    STATUS_CHOICES = (
-        ('PUBLISHED', 'Published'),
-        ('IN_PROGRESS', 'In progress'),
-        ('FAILED', 'Failed'),
-        ('COMPLETED', 'Completed'),
-    ) #:
+
     id = models.BigAutoField(primary_key=True)  # Use BigAutoField for the primary key
-    status = models.CharField(max_length=11, choices=STATUS_CHOICES, default='PUBLISHED')
+    status = models.CharField(
+        max_length=11, choices=options.MESSAGE_STATUS_CHOICES, 
+        default=options.MessageStatusPublished
+    )
     exchange = models.CharField(max_length=200, blank=True, null=True)  #: the exchange
     queue = models.CharField(max_length=200, blank=True, null=True)
     routing_key = models.CharField(max_length=200, blank=True, null=True)

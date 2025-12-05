@@ -10,6 +10,7 @@ from django.conf import settings
 
 from carrot.models import MessageLog
 from carrot.objects import VirtualHost, BaseMessageSerializer, DefaultMessageSerializer
+from carrot import options
 
 import json
 import traceback
@@ -118,7 +119,7 @@ class Consumer(threading.Thread):
                 log.log = '\n'.join(self.task_log)
             
             # TODO: Add Retry here for `django.db.utils.InterfaceError: connection already closed`
-            log.status = 'FAILED'
+            log.status = options.MessageStatusFailed
             log.failure_time = timezone.now()
             log.exception = err
             log.traceback = traceback.format_exc()
@@ -197,11 +198,11 @@ class Consumer(threading.Thread):
         except ObjectDoesNotExist:
             return None, "Object Not Found", False
 
-        if log.status in "PUBLISHED":
+        if log.status in options.MessageStatusPublished:
             return log, None, False
 
         failure_reason = f"Task Status is {log.status}"
-        if log.status in ("IN_PROGRESS", "COMPLETED"):
+        if log.status in (options.MessageStatusInProgress, options.MessageStatusCompleted):
             return None, failure_reason, True
 
         return None, failure_reason, False
@@ -347,7 +348,7 @@ class Consumer(threading.Thread):
         if log:
             self.active_message_log = log
             log.worker = self.worker
-            log.status = "IN_PROGRESS"
+            log.status = options.MessageStatusInProgress
             log.save()
         else:
             # Continue if message has been acknowledged and already in progress
@@ -407,7 +408,7 @@ class Consumer(threading.Thread):
             self.logger.info(base_msg)
             self.task_log.append(success)
 
-            log.status = 'COMPLETED'
+            log.status = options.MessageStatusCompleted
             log.completion_time = timezone.now()
 
             if isinstance(output, dict):

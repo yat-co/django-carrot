@@ -1,12 +1,14 @@
+from django.utils import timezone
+
+from carrot import options
+
 import importlib
 import json
 import logging
 import uuid
-from typing import Tuple, Callable, Dict, Any, Union, Optional
-
 import pika
-from django.utils import timezone
-
+from typing import Tuple, Callable, Dict, Any, Union, Optional
+import traceback as tb
 
 
 class VirtualHost(object):
@@ -274,31 +276,66 @@ class Message(object):
         tracked in the Django project's database
         """
         from carrot.models import MessageLog
-        logging.getLogger("pika").setLevel(pika_log_level)
-        connection, channel = self.connection_channel
+        
+        try:
+            logging.getLogger("pika").setLevel(pika_log_level)
+            connection, channel = self.connection_channel
 
-        if isinstance(self.task_kwargs, str):
+            if isinstance(self.task_kwargs, str):
+                try:
+                    json.dumps(self.task_kwargs)
+                    keyword_arguments = self.task_kwargs
+                except json.decoder.JSONDecodeError:
+                    keyword_arguments = '{}'
+            else:
+                keyword_arguments = json.dumps(self.task_kwargs)
+
+            log = MessageLog.objects.create(
+                status=options.MessageStatusPublished,
+                queue=self.queue,
+                exchange=self.exchange or '',
+                routing_key=self.routing_key or self.queue,
+                uuid=str(self.uuid),
+                priority=self.priority,
+                task_args=self.task_args,
+                content=keyword_arguments,
+                task=self.task,
+                validate=self.validate,
+                publish_time=timezone.now(),
+            )
+
+            self.formatter.publish(connection, channel)
+            return log
+        except Exception as e:
+            # Create a MessageLog with status FAILED if publishing fails
             try:
-                json.dumps(self.task_kwargs)
-                keyword_arguments = self.task_kwargs
-            except json.decoder.JSONDecodeError:
-                keyword_arguments = '{}'
-        else:
-            keyword_arguments = json.dumps(self.task_kwargs)
-
-        log = MessageLog.objects.create(
-            status='PUBLISHED',
-            queue=self.queue,
-            exchange=self.exchange or '',
-            routing_key=self.routing_key or self.queue,
-            uuid=str(self.uuid),
-            priority=self.priority,
-            task_args=self.task_args,
-            content=keyword_arguments,
-            task=self.task,
-            validate=self.validate,
-            publish_time=timezone.now(),
-        )
-
-        self.formatter.publish(connection, channel)
-        return log
+                if isinstance(self.task_kwargs, str):
+                    try:
+                        json.dumps(self.task_kwargs)
+                        keyword_arguments = self.task_kwargs
+                    except json.decoder.JSONDecodeError:
+                        keyword_arguments = '{}'
+                else:
+                    keyword_arguments = json.dumps(self.task_kwargs) if self.task_kwargs else '{}'
+                
+                MessageLog.objects.create(
+                    status=options.MessageStatusFailed,
+                    queue=self.queue,
+                    exchange=self.exchange or '',
+                    routing_key=self.routing_key or self.queue,
+                    uuid=str(self.uuid),
+                    priority=self.priority,
+                    task_args=self.task_args,
+                    content=keyword_arguments,
+                    task=self.task,
+                    validate=self.validate,
+                    publish_time=timezone.now(),
+                    failure_time=timezone.now(),
+                    exception=str(e),
+                    traceback=tb.format_exc(),
+                )
+            except Exception:
+                # If we can't even create the failed log, just pass
+                # The original exception will still be raised
+                pass
+            raise

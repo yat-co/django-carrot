@@ -10,6 +10,7 @@ from carrot import DEFAULT_BROKER
 import sys
 import os
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import signal
 import psutil
 import time
@@ -173,7 +174,9 @@ class Command(BaseCommand):
             logger = logging.getLogger('carrot')
             logger.setLevel(loglevel)
 
-            file_handler = logging.FileHandler(logfile)
+            file_handler = TimedRotatingFileHandler(
+                logfile, when='d', interval=1, backupCount=30
+            )
             file_handler.setLevel(loglevel)
 
             stream_handler = logging.StreamHandler()
