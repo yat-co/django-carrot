@@ -5,16 +5,20 @@ consume
 Most users should use the functions defined in this module, rather than attempting to subclass the base level objects
 
 """
-import json
-import importlib
 from django.conf import settings
+from django.db.utils import IntegrityError
+from django.utils.decorators import method_decorator
+
 from carrot.objects import VirtualHost, Message
 from carrot.models import ScheduledTask, MessageLog
-from django.utils.decorators import method_decorator
 from carrot import DEFAULT_BROKER
 from carrot.exceptions import CarrotConfigException
-from django.db.utils import IntegrityError
-from typing import Dict, List, Union, Callable, Type, Any
+from carrot import options
+
+from datetime import datetime
+import json
+import importlib
+from typing import Dict, List, Optional, Union, Callable, Type, Any
 
 
 def get_host_from_name(name: str) -> VirtualHost:
@@ -106,8 +110,8 @@ def create_message(task: Union[str, Callable],
                    task_args: tuple = (),
                    exchange: str = '',
                    routing_key: str = None,
-                   task_kwargs: dict = None
-                   ) -> Message:
+                   validate: bool = True,
+                   task_kwargs: dict = None) -> Message:
     """
     Creates a :class:`carrot.objects.Message` object without publishing it
 
@@ -117,11 +121,15 @@ def create_message(task: Union[str, Callable],
     if not task_kwargs:
         task_kwargs = {}
 
-    task = validate_task(task)
+    if validate:
+        task = validate_task(task)
 
     vhost = get_host_from_name(queue)
-    msg = Message(virtual_host=vhost, queue=queue, routing_key=routing_key, exchange=exchange, task=task,
-                  priority=priority, task_args=task_args, task_kwargs=task_kwargs)
+    msg = Message(
+        virtual_host=vhost, queue=queue, routing_key=routing_key, exchange=exchange, 
+        task=task, priority=priority, validate=validate, task_args=task_args, 
+        task_kwargs=task_kwargs
+    )
 
     return msg
 
@@ -132,6 +140,7 @@ def publish_message(task: Union[str, Callable],
                     queue: str = None,
                     exchange: str = '',
                     routing_key: str = None,
+                    validate: bool = True,
                     **task_kwargs) -> MessageLog:
     """
     Wrapped for :func:`.create_message`, which publishes the task to the queue
@@ -140,14 +149,19 @@ def publish_message(task: Union[str, Callable],
     """
     if not queue:
         queue = 'default'
-    msg = create_message(task, queue, priority, task_args, exchange, routing_key, task_kwargs)
+    msg = create_message(
+        task, queue, priority, task_args, exchange, routing_key, validate, task_kwargs
+    )
     return msg.publish()
 
 
 def create_scheduled_task(task: Union[str, Callable],
                           interval: Dict[str, int],
+                          last_run_time: datetime = None,
                           task_name: str = None,
                           queue: str = None,
+                          validate: bool = True,
+                          priority: Optional[int] = None,
                           **kwargs) -> ScheduledTask:
     """
     Helper function for creating a :class:`carrot.models.ScheduledTask`
@@ -159,7 +173,8 @@ def create_scheduled_task(task: Union[str, Callable],
         else:
             raise Exception('You must provide a task_name or task')
 
-    task = validate_task(task)
+    if validate:
+        task = validate_task(task)
 
     try:
         assert isinstance(interval, dict)
@@ -175,9 +190,12 @@ def create_scheduled_task(task: Union[str, Callable],
                 task_name=task_name,
                 interval_type=interval_type,
                 interval_count=count,
+                last_run_time=last_run_time,
                 routing_key=queue,
                 task=task,
                 content=json.dumps(kwargs or '{}'),
+                validate=validate,
+                priority=priority
         )
     except IntegrityError:
         raise IntegrityError('A ScheduledTask with this task_name already exists. Please specific a unique name using '
@@ -266,7 +284,9 @@ def purge_queue() -> None:
     Deletes all MessageLog objects with status `IN_PROGRESS` or `PUBLISHED` add iterate through and purge all RabbitMQ
     queues
     """
-    queued_messages = MessageLog.objects.filter(status__in=['IN_PROGRESS', 'PUBLISHED'])
+    queued_messages = MessageLog.objects.filter(
+        status__in=[options.MessageStatusInProgress, options.MessageStatusPublished]
+    )
     queued_messages.delete()
 
     try:
@@ -291,7 +311,9 @@ def requeue_all() -> None:
     """
     Requeues all pending MessageLogs
     """
-    logs = MessageLog.objects.filter(status__in=['IN_PROGRESS', 'PUBLISHED'])
+    logs = MessageLog.objects.filter(
+        status__in=[options.MessageStatusInProgress, options.MessageStatusPublished]
+    )
 
     for log in logs:
         log.requeue()

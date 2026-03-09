@@ -1,22 +1,30 @@
+from django.conf import settings
+from django.contrib.postgres.search import SearchVector
+from django.db.models import QuerySet
+
+from rest_framework import viewsets, serializers, pagination, response
+from rest_framework.request import Request
+
 import json
 import ast
 import importlib
 from inspect import getmembers, isfunction
-from django.conf import settings
-from rest_framework import viewsets, serializers, pagination, response
-from rest_framework.request import Request
+
 from carrot.models import MessageLog, ScheduledTask
 from carrot.utilities import purge_queue, requeue_all
-from django.contrib.postgres.search import SearchVector
-from django.db.models import QuerySet
+from carrot import options
 
 
 class MessageLogSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = MessageLog
-        fields = 'status', 'exchange', 'queue', 'routing_key', 'uuid', 'priority', 'task', 'task_args', \
-                 'content', 'exception', 'traceback', 'output', 'publish_time', 'failure_time', 'completion_time', \
-                 'log', 'id', 'virtual_host'
+        fields = [
+            'status', 'exchange', 'queue', 'routing_key', 'uuid', 'priority', 'task',
+            'task_args', 'content', 'validate', "worker", 'exception', 'traceback', 'output',
+            'publish_time', 'failure_time', 'completion_time', 'log', 'id',
+            'virtual_host'
+        ]
 
 
 class SmallPagination(pagination.PageNumberPagination):
@@ -36,12 +44,15 @@ class MessageLogViewset(viewsets.ModelViewSet):
         search_term = self.request.query_params.get('search', None)
         qs = self.queryset.all()
         if search_term:
-            if settings.DATABASES.get('default', {}).get('ENGINE') == 'django.db.backends.postgresql_psycopg2':
-                qs = qs.annotate(search=SearchVector('task', 'content', 'task_args')).filter(search=search_term)
+            if settings.DATABASES.get("default", {}).get("ENGINE") == "django.db.backends.postgresql_psycopg2":
+                qs = qs.annotate(
+                    search=SearchVector("task", "worker", "content", "task_args")
+                ).filter(search=search_term)
             else:
                 qs = (
                     qs.filter(task__icontains=search_term) |
                     qs.filter(content__icontains=search_term) |
+                    qs.filter(worker__icontains=search_term) |
                     qs.filter(task_args__icontains=search_term)
                 ).distinct()
 
@@ -53,7 +64,7 @@ class PublishedMessageLogViewSet(MessageLogViewset):
     Returns a list of Published `MessageLog` objects
     """
 
-    queryset = MessageLog.objects.filter(status__in=['PUBLISHED', 'IN_PROGRESS'], id__isnull=False)
+    queryset = MessageLog.objects.filter(status__in=[options.MessageStatusPublished, options.MessageStatusInProgress], id__isnull=False)
 
     def purge(self, request: Request, *args, **kwargs) -> response.Response:
         """
@@ -80,7 +91,7 @@ class FailedMessageLogViewSet(MessageLogViewset):
     Returns a list of failed `MessageLog` objects
     """
 
-    queryset = MessageLog.objects.filter(status='FAILED', id__isnull=False)
+    queryset = MessageLog.objects.filter(status=options.MessageStatusFailed, id__isnull=False)
 
     def destroy(self, request: Request, *args, **kwargs) -> response.Response:
         """
@@ -107,7 +118,7 @@ class CompletedMessageLogViewSet(MessageLogViewset):
     """
     Returns a list of Completed `MessageLog` objects
     """
-    queryset = MessageLog.objects.filter(status='COMPLETED', id__isnull=False)
+    queryset = MessageLog.objects.filter(status=options.MessageStatusCompleted, id__isnull=False)
 
 
 completed_message_log_viewset = CompletedMessageLogViewSet.as_view({'get': 'list'})
@@ -200,7 +211,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
         model = ScheduledTask
         fields = (
             'task', 'interval_display', 'active', 'id', 'queue', 'exchange', 'routing_key', 'interval_type',
-            'interval_count', 'content', 'task_args', 'task_name'
+            'interval_count', 'content', 'task_args', 'task_name', 'priority'
         )
         extra_kwargs = {
             'queue': {

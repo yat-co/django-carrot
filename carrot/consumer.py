@@ -10,6 +10,7 @@ from django.conf import settings
 
 from carrot.models import MessageLog
 from carrot.objects import VirtualHost, BaseMessageSerializer, DefaultMessageSerializer
+from carrot import options
 
 import json
 import traceback
@@ -18,7 +19,10 @@ import logging
 import importlib
 import pika
 import time
-from typing import Optional, Type, List, Dict, Any, Callable, Union
+from typing import Optional, Type, List, Dict, Any, Callable, Union, Tuple
+
+import pika.channel
+from pika.adapters.blocking_connection import BlockingChannel
 
 
 LOGGING_FORMAT = '%(threadName)-10s %(asctime)-10s %(levelname)s:: %(message)s'
@@ -40,8 +44,16 @@ class Consumer(threading.Thread):
     remaining_save_attempts: int = 10
     get_message_attempts: int = 50
 
-    def __init__(self, host: VirtualHost, queue: str, logger: logging.Logger, name: str, durable: bool = True,
-                 queue_arguments: dict = None, exchange_arguments: dict = None):
+    def __init__(self, 
+                 host: VirtualHost,
+                 queue: str,
+                 logger: logging.Logger,
+                 name: str,
+                 worker: Optional[str] = None,
+                 priority: Optional[int] = None,
+                 durable: bool = True,
+                 queue_arguments: dict = None,
+                 exchange_arguments: dict = None):
         """
         :param host: the host the queue to consume from is attached to
         :type host: :class:`carrot.objects.VirtualHost`
@@ -59,20 +71,26 @@ class Consumer(threading.Thread):
             exchange_arguments = {}
 
         self.failure_callbacks: List[Callable] = []
-        self.name = name
+        self.name: str = name
+        self.worker: Optional[str] = worker
         self.logger = logger
         self.queue = queue
         self.exchange = queue
-
+        self.priority: Optional[int] = priority
         self.connection: pika.SelectConnection = None
-        self.channel: pika.channel = None
+        self.channel: Optional[BlockingChannel] = None
         self.shutdown_requested = False
+        self.alert_dead_thread: bool = False # Alert on dead thread
         self._consumer_tag = None
         self._url = str(host)
 
         self.queue_arguments = queue_arguments
         self.exchange_arguments = exchange_arguments
         self.durable = durable
+
+    @property
+    def worker_display(self) -> str:
+        return self.worker or "default"
 
     def add_failure_callback(self, cb: Callable) -> None:
         """
@@ -99,8 +117,9 @@ class Consumer(threading.Thread):
         if log.pk:
             if self.task_log:
                 log.log = '\n'.join(self.task_log)
-
-            log.status = 'FAILED'
+            
+            # TODO: Add Retry here for `django.db.utils.InterfaceError: connection already closed`
+            log.status = options.MessageStatusFailed
             log.failure_time = timezone.now()
             log.exception = err
             log.traceback = traceback.format_exc()
@@ -116,17 +135,39 @@ class Consumer(threading.Thread):
         """
         return properties[self.serializer.type_header]
 
-    def __get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Optional[MessageLog]:
+    def __get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Tuple[Optional[MessageLog], str, bool]:
+        """Wrapper for get Message log
+
+        Parameters
+        ----------
+        properties : pika.spec.BasicProperties
+            Pika Message Properties
+        body : bytes
+            Message Body in Bytes
+
+        Returns
+        -------
+        Tuple[Optional[MessageLog], str, bool]
+            log : Optional[MessageLog]
+                Optionally None message log
+            failure_reason : str
+                Failure reason if failed to fetch message log
+            acknowledged : bool
+                Indicator if message was already Acknowledged
+        """
+        failure_reason = None
+        acknowledged = False
         for i in range(0, self.get_message_attempts):
-            log = self.get_message_log(properties, body)
+            log, failure_reason, acknowledged = self.get_message_log(properties, body)
 
             if log:
-                return log
+                return log, None, False
+            
             time.sleep(0.1)
 
-        return None
+        return None, failure_reason, acknowledged
 
-    def get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Optional[MessageLog]:
+    def get_message_log(self, properties: pika.spec.BasicProperties, body: bytes) -> Tuple[Optional[MessageLog], str, bool]:
         """
         Finds a MessageLog based on the content of the RabbitMQ message
 
@@ -155,12 +196,16 @@ class Consumer(threading.Thread):
         try:
             log = MessageLog.objects.get(uuid=properties.message_id)
         except ObjectDoesNotExist:
-            return None
+            return None, "Object Not Found", False
 
-        if log.status == 'PUBLISHED':
-            return log
+        if log.status in options.MessageStatusPublished:
+            return log, None, False
 
-        return None
+        failure_reason = f"Task Status is {log.status}"
+        if log.status in (options.MessageStatusInProgress, options.MessageStatusCompleted):
+            return None, failure_reason, True
+
+        return None, failure_reason, False
 
     def connect(self) -> pika.SelectConnection:
         """
@@ -193,7 +238,7 @@ class Consumer(threading.Thread):
         All arguments sent to this callback come from Pika but are not required by Carrot
         """
 
-        self.channel = None
+        self.channel: Optional[BlockingChannel] = None
         if self.shutdown_requested:
             self.logger.warning('Connection closed')
             self.connection.ioloop.stop()
@@ -218,7 +263,7 @@ class Consumer(threading.Thread):
         establishes the exchange
         """
         self.logger.info('Channel opened')
-        self.channel = channel
+        self.channel: Optional[BlockingChannel] = channel
         self.channel.add_on_close_callback(self.on_channel_closed)
         self.channel.exchange_declare(
             self.exchange,
@@ -282,7 +327,9 @@ class Consumer(threading.Thread):
 
         This method sets a channel prefetch count of zero to prevent dropouts
         """
-        self.logger.info('Starting consumer %s' % self.name)
+        self.logger.info(
+            f"Starting consumer=`{self.name}` on worker=`{self.worker_display}`"
+        )
         self.channel.add_on_cancel_callback(self.on_consumer_cancelled)
         self.channel.basic_qos(prefetch_count=1)
         arguments = None
@@ -300,7 +347,9 @@ class Consumer(threading.Thread):
         Invoked by pika when RabbitMQ sends a Basic.Cancel for a consumer receiving messages.
 
         """
-        self.logger.warning('Consumer was cancelled remotely, shutting down: %r', method_frame)
+        self.logger.warning(
+            f"Consumer was cancelled remotely, shutting down: {method_frame}"
+        )
         if self.channel:
             self.channel.close()
 
@@ -312,14 +361,21 @@ class Consumer(threading.Thread):
 
         """
         self.channel.basic_ack(method_frame.delivery_tag)
-        log = self.__get_message_log(properties, body)
+        log: MessageLog
+        log, failure_reason, acknowledged = self.__get_message_log(properties, body)
         if log:
             self.active_message_log = log
-            log.status = 'IN_PROGRESS'
+            log.worker = self.worker
+            log.status = options.MessageStatusInProgress
             log.save()
         else:
-            self.logger.error('Unable to find a MessageLog matching the uuid %s. Ignoring this task' %
-                              properties.message_id)
+            # Continue if message has been acknowledged and already in progress
+            if acknowledged:
+                return
+
+            self.logger.error(
+                f'Unable to find a MessageLog matching the uuid: {str(properties.message_id)}. Ignoring this task. Reason: {str(failure_reason)}'
+            )
             return
 
         try:
@@ -328,7 +384,9 @@ class Consumer(threading.Thread):
             return self.fail(log, 'Unable to identify the task type because a key was not found in the message header: %s' %
                       err)
 
-        self.logger.info('Consuming task %s, ID=%s' % (task_type, properties.message_id))
+        self.logger.info(
+            f"[worker={self.worker_display}] Consuming task {task_type}, ID={properties.message_id}"
+        )
 
         try:
             func = func = self.serializer.get_task(properties, body)
@@ -341,10 +399,12 @@ class Consumer(threading.Thread):
         except Exception as err:
             return self.fail(log, 'Unable to process the message due to an error collecting the task arguments: %s' % err)
 
-        start_msg = '{} {} INFO:: Starting task {}.{}'.format(self.name,
-                                                              timezone.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
-                                                              func.__module__, func.__name__)
-        self.logger.info(start_msg)
+        base_msg: str = f"[worker={self.worker_display}] Starting task {func.__module__}.{func.__name__}"
+        start_msg = '{} {} INFO:: {}'.format(
+            self.name, timezone.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
+            base_msg
+        )
+        self.logger.info(base_msg)
         self.task_log = [start_msg]
         task = LoggingTask(func, self.logger, self.name, *args, **kwargs)
 
@@ -356,15 +416,17 @@ class Consumer(threading.Thread):
                 self.task_log.append(task_logs)
                 self.logger.info(task_logs)
 
-            success = '{} {} INFO:: Task {} completed successfully with response {}'.format(self.name,
-                                                                                            timezone.now().strftime(
-                                                                                                    "%Y-%m-%d %H:%M:%S,%f")[
-                                                                                            :-3],
-                                                                                            log.task, output)
-            self.logger.info(success)
+            base_msg: str = f"[worker={self.worker_display}] Task {log.task} completed successfully with response {output}"
+            success = '{} {} INFO:: {}'.format(
+                self.name, 
+                timezone.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3],
+                base_msg
+            )
+
+            self.logger.info(base_msg)
             self.task_log.append(success)
 
-            log.status = 'COMPLETED'
+            log.status = options.MessageStatusCompleted
             log.completion_time = timezone.now()
 
             if isinstance(output, dict):
@@ -517,17 +579,23 @@ class ConsumerSet(object):
         mod = importlib.import_module(module)
         return getattr(mod, _cls)
 
-    def __init__(self, host: VirtualHost, queue: str, logger: logging.Logger, concurrency: int = 1,
+    def __init__(self,
+                 host: VirtualHost,
+                 queue: str,
+                 logger: logging.Logger,
+                 concurrency: int = 1,
                  name: str = 'consumer',
+                 worker: Optional[str] = None,
                  consumer_class: str = 'carrot.consumer.Consumer'):
         self.logger = logger
         self.host = host
         self.connection = host.blocking_connection
-        self.channel = self.connection.channel()
+        self.channel: Optional[pika.channel.Channel] = self.connection.channel()
         self.queue = queue
 
         self.concurrency = concurrency
-        self.name = '%s-%s' % (self.queue, name)
+        self.name = f"{self.queue}-{name}"
+        self.worker: str = worker or "default"
         self.consumer_class = self.get_consumer_class(consumer_class)
         self.threads: List[Consumer] = []
 
@@ -571,9 +639,16 @@ class ConsumerSet(object):
         A :class:`.Consumer` is attached to each thread and is started
         """
         for i in range(0, self.concurrency):
-            consumer = self.consumer_class(host=self.host, queue=self.queue, logger=self.logger,
-                                           name='%s-%i' % (self.name, i + 1),
-                                           durable=self.durable, queue_arguments=self.queue_arguments,
-                                           exchange_arguments=self.exchange_arguments)
+            consumer = self.consumer_class(
+                host=self.host,
+                queue=self.queue,
+                logger=self.logger,
+                name=f"{self.name}-{str(i + 1)}",
+                priority=(5-i),
+                worker=self.worker,
+                durable=self.durable,
+                queue_arguments=self.queue_arguments,
+                exchange_arguments=self.exchange_arguments
+            )
             self.threads.append(consumer)
             consumer.start()

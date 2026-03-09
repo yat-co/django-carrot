@@ -1,14 +1,12 @@
 from django.db import models
-from django.core.validators import MinValueValidator
-
-# support for both django 1.x/2.x
-try:
-    from django.core.urlresolvers import reverse
-except ImportError:
-    from django.urls import reverse
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.urls import reverse
+from django.utils.translation import gettext_lazy as _
 
 from carrot.exceptions import CarrotConfigException
+from carrot import options
 
+from datetime import datetime, timedelta
 import json
 import os
 import sys
@@ -36,19 +34,22 @@ class MessageLog(models.Model):
            the :function:`carrot.helper_tasks.cleanup` has not been disabled
 
     """
-    STATUS_CHOICES = (
-        ('PUBLISHED', 'Published'),
-        ('IN_PROGRESS', 'In progress'),
-        ('FAILED', 'Failed'),
-        ('COMPLETED', 'Completed'),
-    ) #:
 
-    status = models.CharField(max_length=11, choices=STATUS_CHOICES, default='PUBLISHED')
+    id = models.BigAutoField(primary_key=True)  # Use BigAutoField for the primary key
+    status = models.CharField(
+        max_length=11, choices=options.MESSAGE_STATUS_CHOICES, 
+        default=options.MessageStatusPublished
+    )
     exchange = models.CharField(max_length=200, blank=True, null=True)  #: the exchange
     queue = models.CharField(max_length=200, blank=True, null=True)
     routing_key = models.CharField(max_length=200, blank=True, null=True)
-    uuid = models.CharField(max_length=200)
+    uuid = models.CharField(max_length=200, db_index=True)
     priority = models.PositiveIntegerField(default=0)
+    validate = models.BooleanField(default=True)
+    worker = models.CharField(
+        max_length=100, default=None, null=True, verbose_name=_("Worker"),
+        help_text=_("Worker that executes the task")
+    )
 
     task = models.CharField(max_length=200)  #: the import path for the task to be executed
     task_args = models.TextField(null=True, blank=True, verbose_name='Task positional arguments')
@@ -102,7 +103,8 @@ class MessageLog(models.Model):
         """
         from carrot.utilities import publish_message
         msg = publish_message(self.task, *self.positionals, priority=self.priority, queue=self.queue,
-                              exchange=self.exchange, routing_key=self.routing_key, **self.keywords)
+                              exchange=self.exchange, routing_key=self.routing_key, validate=self.validate, 
+                              **self.keywords)
 
         if self.pk:
             self.delete()
@@ -110,7 +112,11 @@ class MessageLog(models.Model):
         return msg
 
     class Meta:
-        ordering = '-failure_time', '-completion_time', 'status', '-priority', '-publish_time',
+        app_label = "carrot"
+        ordering = (
+            '-failure_time', '-completion_time', 'status', '-priority', 
+            'publish_time',
+        )
 
 
 class ScheduledTask(models.Model):
@@ -127,17 +133,27 @@ class ScheduledTask(models.Model):
     interval_type = models.CharField(max_length=200, choices=INTERVAL_CHOICES, default='seconds')
     interval_count = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
 
+    last_run_time = models.DateTimeField(blank=True, null=True)
+
     exchange = models.CharField(max_length=200, blank=True, null=True)
     routing_key = models.CharField(max_length=200, blank=True, null=True)
     queue = models.CharField(max_length=200, blank=True, null=True)
     task = models.CharField(max_length=200)
     task_args = models.TextField(null=True, blank=True, verbose_name='Positional arguments')
     content = models.TextField(null=True, blank=True, verbose_name='Keyword arguments')
+    validate = models.BooleanField(default=True)
+    priority = models.IntegerField(
+        null=True, blank=True, validators=[MinValueValidator(0), MaxValueValidator(255)],
+        help_text="1 to 5 suggested, up to 255"
+    )
 
     active = models.BooleanField(default=True)
 
     task_name = models.CharField(max_length=200, unique=True)
 
+    class Meta:
+        app_label = "carrot"
+        
     def get_absolute_url(self) -> str:
         return reverse('edit-scheduled-task', args=[self.pk])
 
@@ -166,14 +182,31 @@ class ScheduledTask(models.Model):
         else:
             return ()
 
+    @property
+    def scheduled_time(self) -> bool:
+        return self.last_run_time is not None
+
+    @property
+    def next_run_time(self) -> datetime:
+        if not self.scheduled_time:
+            return None
+        return self.last_run_time + timedelta(seconds=self.interval_count * self.multiplier)
+
     def publish(self, priority: int = 0) -> MessageLog:
         from carrot.utilities import publish_message
         kwargs = json.loads(self.content or '{}')
         if isinstance(kwargs, str):
             kwargs = {}
-        return publish_message(self.task, *self.positional_arguments, priority=priority, queue=self.queue,
-                               exchange=self.exchange or '', routing_key=self.routing_key or self.queue,
-                               **kwargs)
+
+        return publish_message(
+            self.task, *self.positional_arguments, priority=self.priority or priority,
+            queue=self.queue, exchange=self.exchange or '',
+            routing_key=self.routing_key or self.queue, validate=self.validate,
+            **kwargs
+        )
+
+    class Meta:
+        ordering = ('-task', '-pk',)
 
     def __str__(self) -> models.CharField:
         return self.task
