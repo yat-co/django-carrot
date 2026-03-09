@@ -25,6 +25,9 @@ class IoLoop(object):
     def call_later(self, delay, callback):
         pass
 
+    def add_callback_threadsafe(self, callback):
+        pass
+
 
 class Channel(object):
     def __init__(self, *args, **kwargs):

@@ -493,10 +493,16 @@ class Consumer(threading.Thread):
         self.shutdown_requested = True
         if self.channel:
             self.stop_consuming()
-            self.connection.ioloop.start()
-            self.logger.info('Consumer closed')
+            # IOLoop is already running on this thread; cancel -> close -> on_connection_closed
+            # will call ioloop.stop() and run() will return. Do not call ioloop.start() from
+            # another thread (it raises "IOLoop is not reentrant and is already running").
+            self.logger.info('Consumer close requested')
         else:
             self.logger.warning('Not running!')
+            # Channel not open yet (e.g. still connecting). Stop the IOLoop from the other
+            # thread by scheduling stop on the loop thread.
+            if self.connection is not None:
+                self.connection.ioloop.add_callback_threadsafe(self.connection.ioloop.stop)
 
     def close_connection(self) -> None:
         """This method closes the connection to RabbitMQ."""
