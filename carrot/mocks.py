@@ -75,6 +75,8 @@ class Channel(object):
 
 
 class Connection(object):
+    is_open = True  # class attr for when mock returns the class
+
     def __init__(self, *args, **kwargs):
         self.channel = Channel
         self.ioloop = IoLoop()

@@ -284,7 +284,8 @@ class Consumer(threading.Thread):
         else:
             self.logger.warning('Channel closed by client. Closing the connection')
 
-        self.connection.close()
+        if self.connection.is_open:
+            self.connection.close()
 
     def on_exchange_declare(self, *args) -> None:
         """
@@ -506,8 +507,9 @@ class Consumer(threading.Thread):
 
     def close_connection(self) -> None:
         """This method closes the connection to RabbitMQ."""
-        self.logger.info('Closing connection')
-        self.connection.close()
+        if self.connection is not None and self.connection.is_open:
+            self.logger.info('Closing connection')
+            self.connection.close()
 
 
 class ListHandler(logging.Handler):
