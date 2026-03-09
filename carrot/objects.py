@@ -77,9 +77,20 @@ class VirtualHost(object):
         else:
             vhost = self.name
 
-        params = pika.ConnectionParameters(host=self.host, port=self.port, virtual_host=vhost,
-                                           credentials=credentials, connection_attempts=10, ssl=self.secure,
-                                           heartbeat=1200)
+        if self.secure:
+            import ssl
+            ssl_options = pika.SSLOptions(context=ssl.create_default_context())
+        else:
+            ssl_options = None
+        params = pika.ConnectionParameters(
+            host=self.host,
+            port=self.port,
+            virtual_host=vhost,
+            credentials=credentials,
+            connection_attempts=10,
+            ssl_options=ssl_options,
+            heartbeat=1200,
+        )
         return pika.BlockingConnection(parameters=params)
 
 

@@ -167,7 +167,10 @@ class Consumer(threading.Thread):
         Connects to the broker
         """
         self.logger.info('Connecting to %s', self._url)
-        return pika.SelectConnection(pika.URLParameters(self._url), self.on_connection_open, stop_ioloop_on_close=False)
+        return pika.SelectConnection(
+            pika.URLParameters(self._url),
+            on_open_callback=self.on_connection_open,
+        )
 
     def on_connection_open(self, connection: pika.SelectConnection) -> None:
         """
@@ -197,7 +200,7 @@ class Consumer(threading.Thread):
             self.logger.warning('Connection IO loop stopped')
         else:
             self.logger.warning('Connection closed unexpectedly. Trying again in %i seconds' % self.reconnect_timeout)
-            self.connection.add_timeout(self.reconnect_timeout, self.reconnect)
+            self.connection.ioloop.call_later(self.reconnect_timeout, self.reconnect)
 
     def reconnect(self) -> None:
         """
@@ -217,16 +220,21 @@ class Consumer(threading.Thread):
         self.logger.info('Channel opened')
         self.channel = channel
         self.channel.add_on_close_callback(self.on_channel_closed)
-        self.channel.exchange_declare(self.on_exchange_declare, self.exchange, **self.exchange_arguments)
+        self.channel.exchange_declare(
+            self.exchange,
+            exchange_type='direct',
+            callback=self.on_exchange_declare,
+            **self.exchange_arguments,
+        )
 
-    def on_channel_closed(self, channel: pika.channel.Channel, reply_code: int, reply_text: str) -> None:
+    def on_channel_closed(self, channel: pika.channel.Channel, reason: Exception) -> None:
         """
         Called when the channel is closed. Raises a warning and closes the connection
 
-        Parameters are require to match the signature used by Pika but are not required by Carrot
+        Parameters are required to match the signature used by Pika but are not required by Carrot
         """
         if not self.shutdown_requested:
-            self.logger.warning('Consumer %s not running: %s' % (self.name, reply_text))
+            self.logger.warning('Consumer %s not running: %s' % (self.name, reason))
 
         else:
             self.logger.warning('Channel closed by client. Closing the connection')
@@ -240,8 +248,12 @@ class Consumer(threading.Thread):
         Parameters are require to match the signature used by Pika but are not required by Carrot
         """
         self.logger.info('Exchange declared')
-        self.channel.queue_declare(self.on_queue_declare, self.queue, durable=self.durable,
-                                   arguments=self.queue_arguments)
+        self.channel.queue_declare(
+            self.queue,
+            durable=self.durable,
+            arguments=self.queue_arguments,
+            callback=self.on_queue_declare,
+        )
 
     def on_queue_declare(self, *args) -> None:
         """
@@ -249,7 +261,11 @@ class Consumer(threading.Thread):
 
         Parameters are require to match the signature used by Pika but are not required by Carrot
         """
-        self.channel.queue_bind(self.on_bind, self.queue, self.exchange)
+        self.channel.queue_bind(
+            self.queue,
+            self.exchange,
+            callback=self.on_bind,
+        )
 
     def on_bind(self, *args) -> None:
         """
@@ -269,7 +285,15 @@ class Consumer(threading.Thread):
         self.logger.info('Starting consumer %s' % self.name)
         self.channel.add_on_cancel_callback(self.on_consumer_cancelled)
         self.channel.basic_qos(prefetch_count=1)
-        self._consumer_tag = self.channel.basic_consume(self.on_message, self.queue)
+        arguments = None
+        if self.priority is not None:
+            arguments = {"x-priority": self.priority}
+
+        self._consumer_tag = self.channel.basic_consume(
+            self.queue,
+            on_message_callback=self.on_message,
+            arguments=arguments,
+        )
 
     def on_consumer_cancelled(self, method_frame: pika.frame.Method) -> None:
         """
@@ -366,7 +390,7 @@ class Consumer(threading.Thread):
                                                'of carrot threads is too high. Either reduce the amount of '
                                                'scheduled tasks consumers, or increase the max number of '
                                                'connections supported by your database')
-                    self.connection.sleep(10)
+                    time.sleep(10)
 
         except Exception as err:
             task_logs = task.get_logs()
@@ -381,7 +405,7 @@ class Consumer(threading.Thread):
         if self.channel:
             self.shutdown_requested = True
             self.logger.warning('Shutdown received. Cancelling the channel')
-            self.channel.basic_cancel(self.on_cancel, self._consumer_tag)
+            self.channel.basic_cancel(self._consumer_tag, callback=self.on_cancel)
 
     def on_cancel(self, *args) -> None:
         """

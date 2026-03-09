@@ -22,6 +22,9 @@ class IoLoop(object):
     def start(self):
         pass
 
+    def call_later(self, delay, callback):
+        pass
+
 
 class Channel(object):
     def __init__(self, *args, **kwargs):
@@ -40,7 +43,7 @@ class Channel(object):
     def close(*args, **kwargs):
         return
 
-    def exchange_declare(self, callback, exchange=None, **kwargs):
+    def exchange_declare(self, *args, **kwargs):
         return
 
     def basic_publish(self, **kwargs):
