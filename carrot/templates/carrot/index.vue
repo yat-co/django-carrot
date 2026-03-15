@@ -11,7 +11,11 @@
     <!--<link rel="icon" type="image/png" href="favicon-32x32.png" sizes="32x32">-->
     <style>
       .text-center {text-align: center}
-    </style
+      .message-log-detail {
+        user-select: text;
+        -webkit-user-select: text;
+      }
+    </style>
 </head>
 <body>
   <div id="app">
@@ -47,7 +51,7 @@
             :overlay="false"
             persistent
           >
-              <v-card tile v-if="selectedMessageLog">
+              <v-card tile v-if="selectedMessageLog" class="message-log-detail">
                   <v-toolbar dark :class="getColor()">
                       <v-toolbar-title>[{ selectedMessageLog.task }]
                       </v-toolbar-title>
@@ -337,6 +341,14 @@
                         <td>[{ props.item.content }]</td>
                       </tr>
                       <tr v-else-if="tabs === 'tab-failed'" @click.stop="selectedMessageLog = props.item">
+                        <td @click.stop>
+                          <v-checkbox
+                            hide-details
+                            :input-value="isFailedSelected(props.item.id)"
+                            @click.native.stop
+                            @change="toggleFailedSelection(props.item.id)"
+                          ></v-checkbox>
+                        </td>
                         <td>[{ props.item.failure_time | displayTime }]</td>
                         <td>[{ props.item.task }]</td>
                         <td>[{ props.item.worker }]</td>
@@ -368,6 +380,7 @@
                   </v-card-actions>
                   <v-card-actions v-if="tabs === 'tab-failed'">
                       <v-spacer></v-spacer>
+                      <v-btn flat text class="blue" :disabled="selectedFailedIds.length === 0" @click="requeueSelectedFailed"><v-icon left>cached</v-icon>Requeue selected ([{ selectedFailedIds.length }])</v-btn>
                       <v-btn flat text class="error" @click="deleteAll"><v-icon left>close</v-icon>Delete all</v-btn>
                       <v-btn flat text class="blue" @click="requeueAll"><v-icon left>cached</v-icon>Requeue all</v-btn>
                   </v-card-actions>
@@ -380,6 +393,16 @@
           </v-tabs-items>
         </v-container>
       </v-content>
+      <v-snackbar
+        v-model="snackbar.show"
+        :color="snackbar.color"
+        :timeout="snackbar.timeout"
+        bottom
+        right
+      >
+        [{ snackbar.message }]
+        <v-btn flat dark @click.native="snackbar.show = false">Close</v-btn>
+      </v-snackbar>
     </v-app>
   </div>
 
@@ -598,6 +621,7 @@
         async tabs () {
           this.pageNumber = 1
           this.search = null
+          this.selectedFailedIds = []
           await this.$store.dispatch('clearTasks')
           this.updateTasks()
         },
@@ -637,6 +661,31 @@
         }
       },
       methods: {
+        notify (message, color) {
+          this.snackbar.message = message
+          this.snackbar.color = color || 'success'
+          this.snackbar.show = true
+        },
+        getErrorMessage (error, fallback) {
+          if (error && error.response && error.response.data) {
+            var d = error.response.data
+            if (typeof d.detail === 'string') return d.detail
+            if (d.detail && d.detail.length) return d.detail[0]
+            if (d.message) return d.message
+          }
+          return fallback || 'An error occurred.'
+        },
+        isFailedSelected (id) {
+          return this.selectedFailedIds.indexOf(id) !== -1
+        },
+        toggleFailedSelection (id) {
+          var i = this.selectedFailedIds.indexOf(id)
+          if (i >= 0) {
+            this.selectedFailedIds.splice(i, 1)
+          } else {
+            this.selectedFailedIds.push(id)
+          }
+        },
         getTracebackOffset (line) {
             var offset = line.search(/\S|$/) / 2
             var width = 12 - offset
@@ -691,32 +740,81 @@
             this.loading = false
         },
         async requeueOne () {
-            await this.$store.dispatch('requeueOne', this.selectedMessageLog.id)
-            await this.updateTasks()
-            this.selectedMessageLog = null
-            this.displayMessageLog = false
+            try {
+                await this.$store.dispatch('requeueOne', this.selectedMessageLog.id)
+                await this.updateTasks()
+                this.selectedMessageLog = null
+                this.displayMessageLog = false
+                this.notify('Task requeued.', 'success')
+            } catch (error) {
+                this.notify(this.getErrorMessage(error, 'Failed to requeue task.'), 'error')
+            }
         },
         async deleteOne () {
-            await this.$store.dispatch('deleteOne', this.selectedMessageLog.id)
-            await this.updateTasks()
-            this.selectedMessageLog = null
-            this.displayMessageLog = false
+            try {
+                await this.$store.dispatch('deleteOne', this.selectedMessageLog.id)
+                await this.updateTasks()
+                this.selectedMessageLog = null
+                this.displayMessageLog = false
+                this.notify('Task deleted.', 'success')
+            } catch (error) {
+                this.notify(this.getErrorMessage(error, 'Failed to delete task.'), 'error')
+            }
         },
         async requeuePending () {
-            await this.$store.dispatch('requeuePending')
-            await this.updateTasks()
+            try {
+                await this.$store.dispatch('requeuePending')
+                await this.updateTasks()
+                this.notify('All queued tasks requeued.', 'success')
+            } catch (error) {
+                this.notify(this.getErrorMessage(error, 'Failed to requeue all.'), 'error')
+            }
         },
         async purgeAll () {
             await this.$store.dispatch('purgeAll')
             await this.updateTasks()
         },
+        async requeueSelectedFailed () {
+            if (this.selectedFailedIds.length === 0) return
+            var succeeded = 0
+            var failed = 0
+            try {
+                for (var i = 0; i < this.selectedFailedIds.length; i++) {
+                    try {
+                        await this.$store.dispatch('requeueOne', this.selectedFailedIds[i])
+                        succeeded++
+                    } catch (err) {
+                        failed++
+                    }
+                }
+                this.selectedFailedIds = []
+                await this.updateTasks()
+                if (failed === 0) {
+                    this.notify(succeeded + ' task(s) requeued.', 'success')
+                } else {
+                    this.notify(succeeded + ' succeeded, ' + failed + ' failed.', failed > 0 ? 'error' : 'success')
+                }
+            } catch (error) {
+                this.notify(this.getErrorMessage(error, 'Failed to requeue selected tasks.'), 'error')
+            }
+        },
         async requeueAll () {
-            await this.$store.dispatch('requeueAll')
-            await this.updateTasks()
+            try {
+                await this.$store.dispatch('requeueAll')
+                await this.updateTasks()
+                this.notify('All failed tasks requeued.', 'success')
+            } catch (error) {
+                this.notify(this.getErrorMessage(error, 'Failed to requeue all failed tasks.'), 'error')
+            }
         },
         async deleteAll () {
-            await this.$store.dispatch('deleteAll')
-            await this.updateTasks()
+            try {
+                await this.$store.dispatch('deleteAll')
+                await this.updateTasks()
+                this.notify('All failed tasks deleted.', 'success')
+            } catch (error) {
+                this.notify(this.getErrorMessage(error, 'Failed to delete all failed tasks.'), 'error')
+            }
         },
         display (line) {
             if (line.logLevel >= this.logLevel) {
@@ -774,11 +872,19 @@
         },
         parsed (content) {
             var output = []
-            var obj =  JSON.parse(content)
+            var obj = JSON.parse(content)
             for (var key in obj) {
-                var val = String(obj[key])
-                if (val.length > 50) {
-                    val = val.slice(0, 50) + '...'
+                var raw = obj[key]
+                var val
+                var maxLen = 50
+                if (typeof raw === 'object' && raw !== null) {
+                    val = JSON.stringify(raw, null, 2)
+                    maxLen = 500
+                } else {
+                    val = String(raw)
+                }
+                if (val.length > maxLen) {
+                    val = val.slice(0, maxLen) + '...'
                 }
                 output.push({
                     key, val
@@ -846,6 +952,11 @@
           } else if (this.tabs === 'tab-failed') {
             return [
               {
+                text: '',
+                value: '_select',
+                sortable: false,
+                align: 'left',
+              }, {
                 text: 'Failure time',
                 value: 'failure_time',
                 align: 'left',
@@ -958,6 +1069,7 @@
         title: 'django-carrot monitor',
         selectedMessageLog: null,
         displayMessageLog: false,
+        selectedFailedIds: [],
 
         displayScheduledTask: false,
         selectedScheduledTask: null,
@@ -1000,6 +1112,12 @@
             }
         ],
         positionalErrors: [],
+        snackbar: {
+          show: false,
+          message: '',
+          color: 'success',
+          timeout: 4000
+        }
       }
     })
   </script>
