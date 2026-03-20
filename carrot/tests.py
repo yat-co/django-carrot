@@ -50,7 +50,8 @@ class CarrotTestCase(TestCase):
 
         # consumer.get_task_type({'type': 'carrot.tests.test_task'}, None)
         p = Properties()
-        self.assertEqual(consumer.get_message_log(p, None), log)
+        log_result, _, _ = consumer.get_message_log(p, None)
+        self.assertEqual(log_result, log)
 
         p.message_id = 4321
         consumer.get_message_log(p, None)
@@ -78,7 +79,7 @@ class CarrotTestCase(TestCase):
         log.save()
 
         consumer.on_message(consumer.channel, p, p, b'{}')
-        consumer.on_channel_closed(consumer.channel, 1, 'blah')
+        consumer.on_channel_closed(consumer.channel, Exception('blah'))
 
         p.headers = {'type':'carrot.tests.test_task'}
         log.delete()
@@ -117,12 +118,12 @@ class CarrotTestCase(TestCase):
         consumer.stop()
 
         consumer.close_connection()
-        consumer.on_channel_closed(consumer.channel, 1, 'blah')
+        consumer.on_channel_closed(consumer.channel, Exception('blah'))
         consumer.on_connection_closed(consumer.connection)
 
         consumer.shutdown_requested = True
 
-        consumer.on_channel_closed(consumer.channel, 1, 'blah')
+        consumer.on_channel_closed(consumer.channel, Exception('blah'))
         consumer.on_connection_closed(consumer.connection)
 
     @mock.patch('carrot.consumer.Consumer', new_callable=mock_consumer)

@@ -22,6 +22,12 @@ class IoLoop(object):
     def start(self):
         pass
 
+    def call_later(self, delay, callback):
+        pass
+
+    def add_callback_threadsafe(self, callback):
+        pass
+
 
 class Channel(object):
     def __init__(self, *args, **kwargs):
@@ -40,7 +46,7 @@ class Channel(object):
     def close(*args, **kwargs):
         return
 
-    def exchange_declare(self, callback, exchange=None, **kwargs):
+    def exchange_declare(self, *args, **kwargs):
         return
 
     def basic_publish(self, **kwargs):
@@ -69,6 +75,8 @@ class Channel(object):
 
 
 class Connection(object):
+    is_open = True  # class attr for when mock returns the class
+
     def __init__(self, *args, **kwargs):
         self.channel = Channel
         self.ioloop = IoLoop()

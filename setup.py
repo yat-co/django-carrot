@@ -40,18 +40,14 @@ setup(
         'Environment :: Web Environment',
         'Development Status :: 5 - Production/Stable',
         'Framework :: Django',
-        'Framework :: Django :: 2.2',
+        'Framework :: Django :: 5.0',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
-        'Programming Language :: Python :: 3.11',
-        'Topic :: Internet :: WWW/HTTP',
-        'Topic :: Internet :: WWW/HTTP :: Dynamic Content',
     ],
-    install_requires=['json2html>=1.3.0', 'pika>=0.10.0', 'djangorestframework>=3.6', 'psutil>=5.4.5']
+    install_requires=['json2html>=1.3.0', 'pika>=1.3.0', 'djangorestframework>=3.6', 'psutil>=5.4.5']
 )
 
