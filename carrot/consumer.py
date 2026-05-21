@@ -389,6 +389,9 @@ class Consumer(threading.Thread):
             f"[worker={self.worker_display}] Consuming task {task_type}, ID={properties.message_id}"
         )
 
+        if self.shutdown_requested:
+            return self.fail(log, 'Shutdown requested; task was not started')
+
         try:
             func = func = self.serializer.get_task(properties, body)
         except (ValueError, ImportError, AttributeError) as err:
@@ -399,6 +402,9 @@ class Consumer(threading.Thread):
 
         except Exception as err:
             return self.fail(log, 'Unable to process the message due to an error collecting the task arguments: %s' % err)
+
+        if self.shutdown_requested:
+            return self.fail(log, 'Shutdown requested; task was not started')
 
         base_msg: str = f"[worker={self.worker_display}] Starting task {func.__module__}.{func.__name__}"
         start_msg = '{} {} INFO:: {}'.format(
@@ -453,6 +459,8 @@ class Consumer(threading.Thread):
                                                'of carrot threads is too high. Either reduce the amount of '
                                                'scheduled tasks consumers, or increase the max number of '
                                                'connections supported by your database')
+                    if self.shutdown_requested:
+                        return self.fail(log, 'Shutdown requested during task save')
                     time.sleep(10)
 
         except Exception as err:
@@ -463,12 +471,19 @@ class Consumer(threading.Thread):
 
     def stop_consuming(self) -> None:
         """
-        Stops the consumer and cancels the channel
+        Stops the consumer and cancels the channel. Must run on the connection IOLoop thread.
         """
+        if not self.channel:
+            return
+        self.logger.warning('Shutdown received. Cancelling the channel')
+        self.channel.basic_cancel(self._consumer_tag, callback=self.on_cancel)
+
+    def _stop_consuming_on_ioloop(self) -> None:
+        """Run stop_consuming on the consumer IOLoop thread (thread-safe shutdown)."""
         if self.channel:
-            self.shutdown_requested = True
-            self.logger.warning('Shutdown received. Cancelling the channel')
-            self.channel.basic_cancel(self._consumer_tag, callback=self.on_cancel)
+            self.stop_consuming()
+        elif self.connection is not None:
+            self.connection.ioloop.stop()
 
     def on_cancel(self, *args) -> None:
         """
@@ -488,22 +503,18 @@ class Consumer(threading.Thread):
 
     def stop(self) -> None:
         """
-        Cleanly exit the Consumer
+        Cleanly exit the Consumer. AMQP work is scheduled on the consumer IOLoop thread so
+        shutdown can proceed even when stop() is called from the main thread while a task
+        is running (once the current on_message callback returns).
         """
         self.logger.info('Stopping')
         self.shutdown_requested = True
-        if self.channel:
-            self.stop_consuming()
-            # IOLoop is already running on this thread; cancel -> close -> on_connection_closed
-            # will call ioloop.stop() and run() will return. Do not call ioloop.start() from
-            # another thread (it raises "IOLoop is not reentrant and is already running").
-            self.logger.info('Consumer close requested')
-        else:
+        if self.connection is None:
             self.logger.warning('Not running!')
-            # Channel not open yet (e.g. still connecting). Stop the IOLoop from the other
-            # thread by scheduling stop on the loop thread.
-            if self.connection is not None:
-                self.connection.ioloop.add_callback_threadsafe(self.connection.ioloop.stop)
+            return
+        # Never call channel methods from another thread; schedule on the IOLoop thread.
+        self.connection.ioloop.add_callback_threadsafe(self._stop_consuming_on_ioloop)
+        self.logger.info('Consumer close requested')
 
     def close_connection(self) -> None:
         """This method closes the connection to RabbitMQ."""
@@ -623,7 +634,7 @@ class ConsumerSet(object):
             if q_settings.get('exchange_arguments', None):
                 self.exchange_arguments = q_settings['exchange_arguments']
 
-    def stop_consuming(self) -> None:
+    def stop_consuming(self, shutdown_timeout: Optional[float] = None) -> None:
         """
         Stops all running threads. Loops through the threads twice - firstly, to set the signal to **False** on all
         threads, secondly to wait for them all to finish
@@ -631,14 +642,31 @@ class ConsumerSet(object):
         If a single loop was used here, the latter threads could still consume new tasks while the parent process waited
         for the earlier threads to finish. The second loop allows for quicker consumer stoppage and stops all consumers
         from consuming new tasks from the moment the signal is received
+
+        :param shutdown_timeout: Seconds to wait per consumer thread for in-flight tasks. None uses
+            settings.CARROT['shutdown_timeout'] (default 30). In-flight Python tasks cannot be interrupted;
+            use ``carrot_daemon stop --hard`` to SIGKILL the process.
         """
+        if shutdown_timeout is None:
+            try:
+                shutdown_timeout = float(settings.CARROT.get('shutdown_timeout', 30))
+            except (AttributeError, TypeError, ValueError):
+                shutdown_timeout = 30.0
+
         for t in self.threads:
             t.stop()
 
         for t in self.threads:
-            print('Closing consumer %s' % t)
-            t.join()
-            print('Closed consumer %s' % t)
+            thread_label = getattr(t, "name", t)
+            self.logger.info(f"Closing consumer {thread_label}")
+            t.join(timeout=shutdown_timeout)
+            if t.is_alive():
+                self.logger.error(
+                    f"Consumer {thread_label} did not stop within {shutdown_timeout} "
+                    "seconds (task may still be running). Use carrot_daemon stop --hard to force kill."
+                )
+            else:
+                self.logger.info(f"Closed consumer {thread_label}")
 
     def start_consuming(self) -> None:
         """

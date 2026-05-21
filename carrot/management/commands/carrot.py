@@ -52,13 +52,20 @@ class Command(BaseCommand):
             self.scheduler.stop()
             self.stdout.write(self.style.SUCCESS('Successfully closed scheduler'))
 
-        self.stdout.write('Terminating running consumer sets (%i)...' % len(self.active_consumer_sets))
-        count = 0
+        shutdown_timeout = 30
+        try:
+            shutdown_timeout = float(settings.CARROT.get('shutdown_timeout', 30))
+        except (AttributeError, TypeError, ValueError):
+            pass
+        self.stdout.write(
+            f"Terminating running consumer sets ({len(self.active_consumer_sets)}); "
+            f"waiting up to {shutdown_timeout} seconds per thread for in-flight "
+            "tasks to finish..."
+        )
         for consumer_set in self.active_consumer_sets:
-            count += 1
-            consumer_set.stop_consuming()
+            consumer_set.stop_consuming(shutdown_timeout=shutdown_timeout)
 
-        self.stdout.write(self.style.SUCCESS('Successfully closed %i consumer sets' % count))
+        self.stdout.write(self.style.SUCCESS(f"Successfully closed {len(self.active_consumer_sets)} consumer sets"))
         sys.exit()
 
     def add_arguments(self, parser: CommandParser) -> None:

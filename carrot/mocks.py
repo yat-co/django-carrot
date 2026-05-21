@@ -26,7 +26,7 @@ class IoLoop(object):
         pass
 
     def add_callback_threadsafe(self, callback):
-        pass
+        callback()
 
 
 class Channel(object):
@@ -108,8 +108,11 @@ class Properties(object):
 
 
 class Consumer(object):
-    def join(self):
+    def join(self, timeout=None):
         return
+
+    def is_alive(self):
+        return False
 
     def stop(self):
         return
