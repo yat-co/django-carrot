@@ -35,18 +35,31 @@ class MessageLogViewset(viewsets.ModelViewSet):
     serializer_class = MessageLogSerializer
     pagination_class = SmallPagination
 
+    def get_object(self) -> MessageLog:
+        """
+        Returns the `MessageLog` object for the given request
+        """
+        return super(MessageLogDetailViewset, self).get_object()
+
     def get_queryset(self) -> QuerySet:
         """
         Returns a queryset of `carrot.models.MessageLog` objects. If a `search_term` is provided in the request query
         params, then the result is filtered based on this. If using postgres, this is done using SearchVectors for
-        improved performance
+        improved performance. Optional per-field filters (`task`, `worker`, `queue`, `content`) are ANDed with
+        the global search when present.
         """
         search_term = self.request.query_params.get('search', None)
         qs = self.queryset.all()
         if search_term:
-            if settings.DATABASES.get("default", {}).get("ENGINE") == "django.db.backends.postgresql_psycopg2":
+            db_engine = settings.DATABASES.get("default", {}).get("ENGINE", "")
+            if db_engine in (
+                "django.db.backends.postgresql",
+                "django.db.backends.postgresql_psycopg2",
+            ):
                 qs = qs.annotate(
-                    search=SearchVector("task", "worker", "content", "task_args")
+                    search=SearchVector(
+                        "task", "worker", "content", "task_args", config='english'
+                    )
                 ).filter(search=search_term)
             else:
                 qs = (
@@ -56,6 +69,11 @@ class MessageLogViewset(viewsets.ModelViewSet):
                     qs.filter(task_args__icontains=search_term)
                 ).distinct()
 
+        for field in ("task", "worker", "queue", "content"):
+            value = self.request.query_params.get(field, None)
+            if value:
+                qs = qs.filter(**{f"{field}__icontains": value})
+
         return qs
 
 
@@ -64,7 +82,10 @@ class PublishedMessageLogViewSet(MessageLogViewset):
     Returns a list of Published `MessageLog` objects
     """
 
-    queryset = MessageLog.objects.filter(status__in=[options.MessageStatusPublished, options.MessageStatusInProgress], id__isnull=False)
+    queryset = MessageLog.objects.filter(
+        status__in=[options.MessageStatusPublished, options.MessageStatusInProgress],
+        id__isnull=False,
+    ).order_by("-priority", "publish_time")
 
     def purge(self, request: Request, *args, **kwargs) -> response.Response:
         """
@@ -91,7 +112,9 @@ class FailedMessageLogViewSet(MessageLogViewset):
     Returns a list of failed `MessageLog` objects
     """
 
-    queryset = MessageLog.objects.filter(status=options.MessageStatusFailed, id__isnull=False)
+    queryset = MessageLog.objects.filter(
+        status=options.MessageStatusFailed, id__isnull=False
+    ).order_by("-failure_time")
 
     def destroy(self, request: Request, *args, **kwargs) -> response.Response:
         """
@@ -118,7 +141,9 @@ class CompletedMessageLogViewSet(MessageLogViewset):
     """
     Returns a list of Completed `MessageLog` objects
     """
-    queryset = MessageLog.objects.filter(status=options.MessageStatusCompleted, id__isnull=False)
+    queryset = MessageLog.objects.filter(
+        status=options.MessageStatusCompleted, id__isnull=False
+    ).order_by("-completion_time")
 
 
 completed_message_log_viewset = CompletedMessageLogViewSet.as_view({'get': 'list'})
