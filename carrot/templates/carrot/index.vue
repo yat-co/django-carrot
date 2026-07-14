@@ -323,6 +323,46 @@
                     v-model="search"
                   ></v-text-field>
                 </v-card-title>
+                <v-container v-if="tabs !== 'tab-scheduled'" fluid class="py-0">
+                  <v-layout row wrap>
+                    <v-flex xs12 sm6 md3>
+                      <v-text-field
+                        label="Task"
+                        append-icon="filter_list"
+                        hide-details
+                        clearable
+                        v-model="filters.task"
+                      ></v-text-field>
+                    </v-flex>
+                    <v-flex xs12 sm6 md3>
+                      <v-text-field
+                        label="Worker"
+                        append-icon="filter_list"
+                        hide-details
+                        clearable
+                        v-model="filters.worker"
+                      ></v-text-field>
+                    </v-flex>
+                    <v-flex xs12 sm6 md3>
+                      <v-text-field
+                        label="Queue"
+                        append-icon="filter_list"
+                        hide-details
+                        clearable
+                        v-model="filters.queue"
+                      ></v-text-field>
+                    </v-flex>
+                    <v-flex xs12 sm6 md3>
+                      <v-text-field
+                        label="Content"
+                        append-icon="filter_list"
+                        hide-details
+                        clearable
+                        v-model="filters.content"
+                      ></v-text-field>
+                    </v-flex>
+                  </v-layout>
+                </v-container>
                 <v-data-table
                     :headers="getHeaders()"
                     :items="tasks"
@@ -433,7 +473,7 @@
         clearTasks ({ commit }) {
           commit('SET_TASKS', [])
         },
-        async getTasks ({ commit }, { page, type, search, scheduled }) {
+        async getTasks ({ commit }, { page, type, search, scheduled, filters }) {
             if (scheduled) {
               var url = '/carrot/api/scheduled-tasks/?page=' + page
             } else {
@@ -441,7 +481,15 @@
             }
 
             if (search) {
-              var url = url + '&search=' + search
+              url = url + '&search=' + encodeURIComponent(search)
+            }
+
+            if (filters) {
+              ['task', 'worker', 'queue', 'content'].forEach(function (field) {
+                if (filters[field]) {
+                  url = url + '&' + field + '=' + encodeURIComponent(filters[field])
+                }
+              })
             }
 
             try {
@@ -621,6 +669,7 @@
         async tabs () {
           this.pageNumber = 1
           this.search = null
+          this.filters = { task: null, worker: null, queue: null, content: null }
           this.selectedFailedIds = []
           await this.$store.dispatch('clearTasks')
           this.updateTasks()
@@ -632,6 +681,22 @@
           this.updateTasks()
         },
         search: _.debounce(function() {
+           this.pageNumber = 1
+           this.updateTasks()
+        }, 500),
+        'filters.task': _.debounce(function() {
+           this.pageNumber = 1
+           this.updateTasks()
+        }, 500),
+        'filters.worker': _.debounce(function() {
+           this.pageNumber = 1
+           this.updateTasks()
+        }, 500),
+        'filters.queue': _.debounce(function() {
+           this.pageNumber = 1
+           this.updateTasks()
+        }, 500),
+        'filters.content': _.debounce(function() {
            this.pageNumber = 1
            this.updateTasks()
         }, 500)
@@ -898,6 +963,7 @@
             page: this.pageNumber,
             type,
             search: this.search,
+            filters: this.filters,
             scheduled: this.tabs === 'tab-scheduled'
           })
         },
@@ -1058,6 +1124,12 @@
         ],
 
         search: null,
+        filters: {
+          task: null,
+          worker: null,
+          queue: null,
+          content: null
+        },
         clipped: true,
         page: null,
         drawer: true,

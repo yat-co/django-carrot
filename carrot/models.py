@@ -114,9 +114,27 @@ class MessageLog(models.Model):
     class Meta:
         app_label = "carrot"
         ordering = (
-            '-failure_time', '-completion_time', 'status', '-priority', 
+            '-failure_time', '-completion_time', 'status', '-priority',
             'publish_time',
         )
+        indexes = [
+            models.Index(
+                fields=["status", "-failure_time"],
+                name="carrot_msglog_status_fail",
+            ),
+            models.Index(
+                fields=["status", "-completion_time"],
+                name="carrot_msglog_status_comp",
+            ),
+            models.Index(
+                fields=["status", "-priority", "publish_time"],
+                name="carrot_msglog_status_pub",
+            ),
+            models.Index(
+                fields=["status", "task"],
+                name="carrot_msglog_status_task",
+            ),
+        ] # Context avoided to max size for index
 
 
 class ScheduledTask(models.Model):
