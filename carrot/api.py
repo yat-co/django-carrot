@@ -35,12 +35,6 @@ class MessageLogViewset(viewsets.ModelViewSet):
     serializer_class = MessageLogSerializer
     pagination_class = SmallPagination
 
-    def get_object(self) -> MessageLog:
-        """
-        Returns the `MessageLog` object for the given request
-        """
-        return super(MessageLogDetailViewset, self).get_object()
-
     def get_queryset(self) -> QuerySet:
         """
         Returns a queryset of `carrot.models.MessageLog` objects. If a `search_term` is provided in the request query
