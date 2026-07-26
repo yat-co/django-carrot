@@ -79,7 +79,7 @@ class PublishedMessageLogViewSet(MessageLogViewset):
     queryset = MessageLog.objects.filter(
         status__in=[options.MessageStatusPublished, options.MessageStatusInProgress],
         id__isnull=False,
-    ).order_by("-priority", "publish_time")
+    ).order_by("status","-priority", "publish_time")
 
     def purge(self, request: Request, *args, **kwargs) -> response.Response:
         """
