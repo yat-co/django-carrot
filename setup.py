@@ -48,6 +48,6 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
     ],
-    install_requires=['json2html>=1.3.0', 'pika>=1.3.0', 'djangorestframework>=3.6', 'psutil>=5.4.5']
+    install_requires=['json2html>=1.3.0', 'pika>=1.3.0', 'djangorestframework>=3.6', 'psutil>=7.0']
 )
 
