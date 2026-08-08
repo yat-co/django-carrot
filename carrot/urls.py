@@ -1,12 +1,14 @@
 from django.urls import re_path
-from carrot.views import MessageList
-from carrot.utilities import decorate_class_view, decorate_function_view, create_class_view
 from django.conf import settings
+
 from carrot.api import (
     published_message_log_viewset, failed_message_log_viewset, completed_message_log_viewset, scheduled_task_viewset,
-    detail_message_log_viewset, scheduled_task_detail, run_scheduled_task, task_list, validate_args, purge_messages,
-    MessageLogViewset, requeue_pending
+    detail_message_log_viewset, fail_message_log_viewset, scheduled_task_detail, run_scheduled_task, task_list,
+    validate_args, purge_messages, MessageLogViewset, requeue_pending
 )
+from carrot.views import MessageList
+from carrot.utilities import decorate_class_view, decorate_function_view, create_class_view
+
 from typing import Any
 
 try:
@@ -36,6 +38,7 @@ urlpatterns = [
     re_path(r'^api/message-logs/purge/$', _f(purge_messages)),
     re_path(r'^api/message-logs/requeue/$', _f(requeue_pending)),
     re_path(r'^api/message-logs/completed/$', _f(completed_message_log_viewset)),
+    re_path(r'^api/message-logs/(?P<pk>[0-9]+)/fail/$', _f(fail_message_log_viewset)),
     re_path(r'^api/message-logs/(?P<pk>[0-9]+)/$', _f(detail_message_log_viewset)),
     re_path(r'^api/scheduled-tasks/$', _f(scheduled_task_viewset)),
     re_path(r'^api/scheduled-tasks/task-choices/$', _f(task_list)),

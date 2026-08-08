@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from carrot.exceptions import CarrotConfigException
@@ -110,6 +111,24 @@ class MessageLog(models.Model):
             self.delete()
 
         return msg
+
+    def mark_failed(self, exception: str) -> 'MessageLog':
+        """
+        Manually mark a queued or in-progress MessageLog as failed.
+        """
+        if self.status not in (
+            options.MessageStatusPublished,
+            options.MessageStatusInProgress,
+        ):
+            raise ValueError(
+                "Only PUBLISHED or IN_PROGRESS tasks can be manually failed"
+            )
+
+        self.status = options.MessageStatusFailed
+        self.failure_time = timezone.now()
+        self.exception = exception
+        self.save(update_fields=["status", "failure_time", "exception"])
+        return self
 
     class Meta:
         app_label = "carrot"
