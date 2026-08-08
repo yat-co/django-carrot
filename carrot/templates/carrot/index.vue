@@ -11,9 +11,13 @@
     <!--<link rel="icon" type="image/png" href="favicon-32x32.png" sizes="32x32">-->
     <style>
       .text-center {text-align: center}
-      .message-log-detail {
+      .message-log-detail,
+      .message-log-detail .list__tile,
+      .message-log-detail .list__tile__content {
         user-select: text;
         -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
       }
     </style>
 </head>
@@ -128,7 +132,7 @@
                     </v-container>
                   </div>
                   <div v-if="selectedMessageLog.status === 'FAILED'">
-                      <v-subheader>Traceback</v-subheader>
+                      <v-subheader>[{ selectedMessageLog.traceback ? 'Traceback' : 'Exception' }]</v-subheader>
                       <v-divider></v-divider>
                       <v-container grid-list-md text-xs-left>
                           <v-layout row wrap>
@@ -137,8 +141,13 @@
                                         <v-card-title>
                                             <v-container>
                                                 <v-layout row wrap>
-                                                     <v-flex :class="getTracebackOffset(line)" v-for="(line, index) in selectedMessageLog.traceback.split('\n')" :key="index">
-                                                       <font face="Monospace">[{ line }]</font>
+                                                     <template v-if="selectedMessageLog.traceback">
+                                                         <v-flex :class="getTracebackOffset(line)" v-for="(line, index) in selectedMessageLog.traceback.split('\n')" :key="index">
+                                                           <font face="Monospace">[{ line }]</font>
+                                                         </v-flex>
+                                                     </template>
+                                                     <v-flex xs12 v-else>
+                                                       <font face="Monospace">[{ selectedMessageLog.exception || 'No exception details available' }]</font>
                                                      </v-flex>
                                                 </v-layout>
                                             </v-container>
@@ -158,6 +167,7 @@
                     <v-spacer></v-spacer>
                     <v-card-actions>
                       <v-spacer></v-spacer>
+                      <v-btn flat text class="error" @click="failOne"><v-icon left>error_outline</v-icon>Fail</v-btn>
                       <v-btn flat text class="blue" @click="requeueOne"><v-icon left>cached</v-icon>Requeue</v-btn>
                     </v-card-actions>
                   </div>
@@ -166,7 +176,8 @@
                     <v-spacer></v-spacer>
                     <v-card-actions>
                       <v-spacer></v-spacer>
-                        <v-btn flat text class="blue" @click="requeueOne"><v-icon left>cached</v-icon>Requeue</v-btn>
+                      <v-btn flat text class="error" @click="failOne"><v-icon left>error_outline</v-icon>Fail</v-btn>
+                      <v-btn flat text class="blue" @click="requeueOne"><v-icon left>cached</v-icon>Requeue</v-btn>
                     </v-card-actions>
                   </div>
               </v-card>
@@ -372,6 +383,14 @@
                 >
                   <template slot="items" slot-scope="props" >
                       <tr v-if="tabs === 'tab-published'" @click.stop="selectedMessageLog = props.item">
+                        <td @click.stop>
+                          <v-checkbox
+                            hide-details
+                            :input-value="isPublishedSelected(props.item.id)"
+                            @click.native.stop
+                            @change="togglePublishedSelection(props.item.id)"
+                          ></v-checkbox>
+                        </td>
                         <td class="text-center">[{ props.item.status }]</td>
                         <td class="text-center">[{ props.item.queue }]</td>
                         <td class="text-center">[{ props.item.priority }]</td>
@@ -415,6 +434,8 @@
                 </v-data-table>
                   <v-card-actions v-if="tabs === 'tab-published'">
                     <v-spacer></v-spacer>
+                    <v-btn flat text class="error" :disabled="selectedPublishedIds.length === 0" @click="failSelectedPublished"><v-icon left>error_outline</v-icon>Fail selected ([{ selectedPublishedIds.length }])</v-btn>
+                    <v-btn flat text class="blue" :disabled="selectedPublishedIds.length === 0" @click="requeueSelectedPublished"><v-icon left>cached</v-icon>Requeue selected ([{ selectedPublishedIds.length }])</v-btn>
                     <v-btn flat text class="error" @click="purgeAll"><v-icon left>close</v-icon>Purge queue</v-btn>
                     <v-btn flat text class="blue" @click="requeuePending"><v-icon left>cached</v-icon>Requeue all</v-btn>
                   </v-card-actions>
@@ -523,6 +544,15 @@
         },
         async requeueOne ({ commit }, id ) {
             await axios.put('/carrot/api/message-logs/' + id + '/', {},
+                {
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    }
+                }
+            )
+        },
+        async failOne ({ commit }, id ) {
+            await axios.post('/carrot/api/message-logs/' + id + '/fail/', {},
                 {
                     headers: {
                         'X-CSRFToken': '{{ csrf_token }}'
@@ -671,6 +701,7 @@
           this.search = null
           this.filters = { task: null, worker: null, queue: null, content: null }
           this.selectedFailedIds = []
+          this.selectedPublishedIds = []
           await this.$store.dispatch('clearTasks')
           this.updateTasks()
         },
@@ -751,6 +782,17 @@
             this.selectedFailedIds.push(id)
           }
         },
+        isPublishedSelected (id) {
+          return this.selectedPublishedIds.indexOf(id) !== -1
+        },
+        togglePublishedSelection (id) {
+          var i = this.selectedPublishedIds.indexOf(id)
+          if (i >= 0) {
+            this.selectedPublishedIds.splice(i, 1)
+          } else {
+            this.selectedPublishedIds.push(id)
+          }
+        },
         getTracebackOffset (line) {
             var offset = line.search(/\S|$/) / 2
             var width = 12 - offset
@@ -815,6 +857,17 @@
                 this.notify(this.getErrorMessage(error, 'Failed to requeue task.'), 'error')
             }
         },
+        async failOne () {
+            try {
+                await this.$store.dispatch('failOne', this.selectedMessageLog.id)
+                await this.updateTasks()
+                this.selectedMessageLog = null
+                this.displayMessageLog = false
+                this.notify('Task marked as failed.', 'success')
+            } catch (error) {
+                this.notify(this.getErrorMessage(error, 'Failed to mark task as failed.'), 'error')
+            }
+        },
         async deleteOne () {
             try {
                 await this.$store.dispatch('deleteOne', this.selectedMessageLog.id)
@@ -861,6 +914,54 @@
                 }
             } catch (error) {
                 this.notify(this.getErrorMessage(error, 'Failed to requeue selected tasks.'), 'error')
+            }
+        },
+        async requeueSelectedPublished () {
+            if (this.selectedPublishedIds.length === 0) return
+            var succeeded = 0
+            var failed = 0
+            try {
+                for (var i = 0; i < this.selectedPublishedIds.length; i++) {
+                    try {
+                        await this.$store.dispatch('requeueOne', this.selectedPublishedIds[i])
+                        succeeded++
+                    } catch (err) {
+                        failed++
+                    }
+                }
+                this.selectedPublishedIds = []
+                await this.updateTasks()
+                if (failed === 0) {
+                    this.notify(succeeded + ' task(s) requeued.', 'success')
+                } else {
+                    this.notify(succeeded + ' succeeded, ' + failed + ' failed.', failed > 0 ? 'error' : 'success')
+                }
+            } catch (error) {
+                this.notify(this.getErrorMessage(error, 'Failed to requeue selected tasks.'), 'error')
+            }
+        },
+        async failSelectedPublished () {
+            if (this.selectedPublishedIds.length === 0) return
+            var succeeded = 0
+            var failed = 0
+            try {
+                for (var i = 0; i < this.selectedPublishedIds.length; i++) {
+                    try {
+                        await this.$store.dispatch('failOne', this.selectedPublishedIds[i])
+                        succeeded++
+                    } catch (err) {
+                        failed++
+                    }
+                }
+                this.selectedPublishedIds = []
+                await this.updateTasks()
+                if (failed === 0) {
+                    this.notify(succeeded + ' task(s) marked as failed.', 'success')
+                } else {
+                    this.notify(succeeded + ' succeeded, ' + failed + ' failed.', failed > 0 ? 'error' : 'success')
+                }
+            } catch (error) {
+                this.notify(this.getErrorMessage(error, 'Failed to mark selected tasks as failed.'), 'error')
             }
         },
         async requeueAll () {
@@ -982,7 +1083,12 @@
         getHeaders () {
           if (this.tabs === 'tab-published') {
             return [
-            {
+              {
+                text: '',
+                value: '_select',
+                sortable: false,
+                align: 'left',
+              }, {
                 text: 'Status',
                 value: 'status',
                 align: 'center',
@@ -1142,6 +1248,7 @@
         selectedMessageLog: null,
         displayMessageLog: false,
         selectedFailedIds: [],
+        selectedPublishedIds: [],
 
         displayScheduledTask: false,
         selectedScheduledTask: null,

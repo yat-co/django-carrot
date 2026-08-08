@@ -165,8 +165,27 @@ class MessageLogDetailViewset(MessageLogViewset):
         self.kwargs = {'pk': new_object.pk}
         return self.retrieve(request, *args, **kwargs)
 
+    def fail(self, request: Request, *args, **kwargs) -> response.Response:
+        """
+        Manually mark a single queued/in-progress task as failed
+        """
+        _object = self.get_object()
+        user = getattr(request, "user", None)
+        if user is not None and getattr(user, "is_authenticated", False):
+            reason = f"Manual fail by {user.get_username()}"
+        else:
+            reason = "Manual fail"
+
+        try:
+            _object.mark_failed(exception=reason)
+        except ValueError as err:
+            return response.Response({'detail': str(err)}, status=400)
+
+        return self.retrieve(request, *args, **kwargs)
+
 
 detail_message_log_viewset = MessageLogDetailViewset.as_view({'get': 'retrieve', 'delete': 'destroy', 'put': 'retry'})
+fail_message_log_viewset = MessageLogDetailViewset.as_view({'post': 'fail'})
 
 
 class ScheduledTaskSerializer(serializers.ModelSerializer):
